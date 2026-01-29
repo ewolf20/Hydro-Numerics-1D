@@ -19,17 +19,11 @@ def polytropic_riemann_expansion_density_profile(t, x, gamma = UNITARY_GAMMA):
 def polytropic_riemann_expansion_velocity_profile(t, x, gamma = UNITARY_GAMMA):
     xi = x / t 
     max_velocity = 2 / (gamma - 1) 
-    min_position = -1 
-    max_position = 2 / (gamma - 1)
     min_velocity = 0
-    return np.where(
-        x <= min_position, 
+    return np.clip(
+        2 / (gamma + 1) * (1 + xi), 
         min_velocity, 
-        np.where(
-            x >= max_position, 
-            max_velocity, 
-            2 / (gamma + 1) * (1 + xi)
-        )
+        max_velocity
     )
 
 #Rho is in units of rho_0; returned pressure is in units of rho_0 c_0^2
