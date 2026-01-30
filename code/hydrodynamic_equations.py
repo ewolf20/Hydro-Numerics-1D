@@ -26,9 +26,9 @@ Where the right hand side contains at most derivatives with respect to x.
 *_solver_wrapped functions are meant to be passed to the differential equation solver. They encode a 
 system of equations, e.g. the full Euler equations. 
 
-    They have calling signature f(state_vars, *num_funcs, *params). 
+    They have calling signature f(state_vars_stack, *num_funcs, *params). 
         
-        state_vars: A 3D ND array of shape (k, l, N). 
+        state_vars_stack: A 3D ND array of shape (k, l, N). 
             The first dimension encodes the different state variables - for 1D hydrodynamics, the quantities rho, u, and (optionally) s. 
             The second dimension encodes a time axis, to accommodate steppers which are not first-order in time. By convention, 
                 the smallest index is the most recent time. 
@@ -81,14 +81,14 @@ def momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv
 
 #STEPPER_WRAPPED 
 
-def euler_equations_generic_solver_wrapped(state_vars, eval, pderiv_x, pressure_func):
-    rho_vals, u_vals = state_vars 
+def euler_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pressure_func):
+    rho_vals, u_vals = state_vars_stack
     rho = eval(rho_vals) 
     u = eval(u_vals) 
     rho_pderiv_x = pderiv_x(rho_vals) 
     u_pderiv_x = pderiv_x(u_vals)
 
-    pressures = pressure_func(state_vars) 
+    pressures = pressure_func(state_vars_stack) 
     P_pderiv_x = pderiv_x(pressures) 
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x) 
@@ -96,8 +96,8 @@ def euler_equations_generic_solver_wrapped(state_vars, eval, pderiv_x, pressure_
 
     return np.stack((rho_rhs, u_rhs))
 
-def euler_equations_isentropic_solver_wrapped(state_vars, eval, pderiv_x, c_func):
-    rho_vals, u_vals = state_vars 
+def euler_equations_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, c_func):
+    rho_vals, u_vals = state_vars_stack
     rho = eval(rho_vals) 
     u = eval(u_vals) 
     rho_pderiv_x = pderiv_x(rho_vals) 
@@ -112,8 +112,8 @@ def euler_equations_isentropic_solver_wrapped(state_vars, eval, pderiv_x, c_func
     return np.stack((rho_rhs, u_rhs))
 
 
-def euler_equations_isentropic_polytropic_solver_wrapped(state_vars, eval, pderiv_x, gamma): 
-    rho_vals, u_vals = state_vars 
+def euler_equations_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, pderiv_x, gamma): 
+    rho_vals, u_vals = state_vars_stack
     rho = eval(rho_vals) 
     u = eval(u_vals) 
     rho_pderiv_x = pderiv_x(rho_vals) 
