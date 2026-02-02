@@ -26,7 +26,7 @@ Where the right hand side contains at most derivatives with respect to x.
 *_solver_wrapped functions are meant to be passed to the differential equation solver. They encode a 
 system of equations, e.g. the full Euler equations. 
 
-    They have calling signature f(state_vars_stack, *num_funcs, *params). 
+    They have calling signature f(state_vars_stack, *fin_diff_funcs, *params). 
         
         state_vars_stack: A 3D ND array of shape (k, l, N). 
             The first dimension encodes the different state variables - for 1D hydrodynamics, the quantities rho, u, and (optionally) s. 
@@ -34,25 +34,25 @@ system of equations, e.g. the full Euler equations.
                 the smallest index is the most recent time. 
             The third dimension encodes a spatial axis.
 
-        num_funcs: Functions which allow stepper-defined numerical evaluation of the quantities on the RHS of the equations. 
+        fin_diff_funcs: Functions which allow stepper-defined finite-difference evaluation of the quantities on the RHS of the equations. 
 
             Different finite difference schemes will evaluate e.g. partial u/partial x in different ways; 
             to avoid implementation-specific details on the level of the equations, we simply pass a function 
             pderiv_x, which the stepper-wrapped function can call. 
             
-                Each element of *num_funcs must have call signature 
-                num_func(vars[i]); that is, it takes the shape (l, N) for a given state variable.
+                Each element of *fin_diff_funcs must have call signature 
+                fin_diff_func(vars[i]); that is, it takes the shape (l, N) for a given state variable.
                 It should have a return of shape (N). 
 
             Remark: For some stepper-wrapped functions, it will be highly natural to pass functions unrelated 
             to derivative taking - e.g. a function mapping the state variables to pressure. These should not 
-            be passed with num_funcs, but instead params, below. 
+            be passed with fin_diff_funcs, but instead params, below. 
 
         *params: Any additional scalar parameters or functions necessary for the equation, e.g. tunable viscosity
         as above, or a pressure equation of state.
 
             Remark: While *params may be present here, they must be defined in a closure before passing to the 
-            solver, which will only accept functions of the form *_solver_wrapped(vars, *num_funcs). By convention, 
+            solver, which will only accept functions of the form *_solver_wrapped(vars, *fin_diff_funcs). By convention, 
             any functions passed here should broadcast over all axes of state_vars besides the first.
 
     These functions return a 2-dimensional ND array of shape (k, N), representing the RHS of the system of equations, 
