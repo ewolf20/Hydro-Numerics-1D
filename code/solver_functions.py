@@ -1,8 +1,10 @@
+import time
+
 import numpy as np 
 
 
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
-                    deriv_order = 1, output_increment = 10):
+                    deriv_order = 1, output_increment = 10, print_progress = False):
     method_time_order, method_num_funcs, stepper = _handle_method(method, x_diff)
     equation_num_funcs = method_num_funcs[:deriv_order + 1]
 
@@ -13,21 +15,44 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     #Massage initial_state into the form required by the stepper 
     #Initial state should be a 2D array; insert a time axis in position 1
-    target_shape = (initial_state.shape[0], method_time_order, initial_state.shape[1])
+    # target_shape = (initial_state.shape[0], method_time_order, initial_state.shape[1])
     initial_state_dim_expanded = np.expand_dims(initial_state, axis = 1)
-    initial_state_reshaped = np.broadcast_to(initial_state_dim_expanded, target_shape)
+    initial_state_reshaped = np.repeat(initial_state_dim_expanded, method_time_order, axis = 1)
 
     current_state_vars_stack = initial_state_reshaped 
+
+
+    PRINT_PROGRESS_COMPLETION_FRACTION = 0.01
+    print_progress_index = int(np.round(t_steps * PRINT_PROGRESS_COMPLETION_FRACTION))
+    if print_progress:
+        print("Running solver:")
+        print("Time step: {0:.2e}".format(t_diff)) 
+        print("Number steps: {0:.0f}".format(t_steps))
+        tick = time.time()
+
 
     for i in range(t_steps): 
         state_update = stepper(wrapped_equation, current_state_vars_stack, equation_num_funcs, t_diff)
 
+        if i == print_progress_index:
+            tock = time.time() 
+            elapsed = tock - tick 
+            estimated_time = elapsed / PRINT_PROGRESS_COMPLETION_FRACTION
+            print("Estimated Completion Time: {0:.1f} s".format(estimated_time))
+
         if i % output_increment == 0:
             output_state_list.append(state_update)
             output_time_list.append(i * t_diff)
+
+        # new_state_vars_stack = np.zeros(current_state_vars_stack.shape)
+        # new_state_vars_stack[:, 1:] = current_state_vars_stack[:, :-1] 
+        # new_state_vars_stack[:, 0] = state_update
+
+        # current_state_vars_stack = new_state_vars_stack
         
         current_state_vars_stack[:, 1:] = current_state_vars_stack[:, :-1] 
         current_state_vars_stack[:, 0] = state_update
+
 
     output_state_array = np.array(output_state_list) 
     output_time_array = np.array(output_time_list) 
