@@ -37,3 +37,12 @@ def normalized_speed_of_sound_isentropic_polytropic_eos(rho, gamma = UNITARY_GAM
 #Rho is in units of rho_0; returned energy per mass is in units of c_0^2
 def normalized_energy_per_mass_isentropic_polytropic_eos(rho, gamma = UNITARY_GAMMA):
     return 1.0 / (gamma * (gamma - 1)) * np.power(rho, gamma - 1)
+
+
+
+#The time-evolution equation for a unity-area Gaussian, initially of width sigma_0, 
+#evolving under purely diffusive dynamics with diffusivity D.
+#Mostly for testing purposes.
+def diffusive_gaussian(t, x, sigma_0, D):
+    sigma_prime = np.sqrt(np.square(sigma_0) + 2 * D * t)
+    return 1.0 / (sigma_prime * np.sqrt(2 * np.pi)) * np.exp(-np.square(x) / (2.0 * np.square(sigma_prime)))

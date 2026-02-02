@@ -79,6 +79,14 @@ def momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv
     return -1.0 * (u * u_pderiv_x + np.power(rho, gamma - 2) * rho_pderiv_x)
 
 
+
+#PURELY DIFFUSIVE DYNAMICS
+#Included mostly for testing purposes...
+
+def diffusive_equation(A_pderiv_xx, diffusivity):
+    return diffusivity * A_pderiv_xx
+
+
 #STEPPER_WRAPPED 
 
 def euler_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pressure_func):
@@ -103,7 +111,7 @@ def euler_equations_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, 
     rho_pderiv_x = pderiv_x(rho_vals) 
     u_pderiv_x = pderiv_x(u_vals)
 
-    c_vals = c_func(state_vars) 
+    c_vals = c_func(state_vars_stack) 
     c = eval(c_vals) 
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)

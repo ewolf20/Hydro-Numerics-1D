@@ -118,6 +118,28 @@ def test_momentum_euler_generic_equation():
     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-4, atol = 1e-5)
 
 
+
+def test_diffusivity_equation():
+    sample_x_values = np.linspace(-3, 3, 10000)
+    sample_x_diff = np.diff(sample_x_values)[0]
+    sample_t = 1.5
+    sample_D = 1.2
+    sample_sigma_0 = 1.3
+    t_range = np.array([sample_t - REFERENCE_DELTA_T, sample_t, sample_t + REFERENCE_DELTA_T])
+    t_grid, x_grid = np.meshgrid(t_range, sample_x_values, indexing = "ij")
+    function_values = analytic_functions.diffusive_gaussian(t_grid, x_grid, sample_sigma_0, sample_D)
+
+    fun_pderiv_t = 1.0 / (2 * REFERENCE_DELTA_T) * (function_values[2] - function_values[0]) 
+
+    fun_values = function_values[1] 
+    fun_pderiv_x = np.gradient(fun_values, sample_x_diff, edge_order = 2)
+    fun_pderiv_xx = np.gradient(fun_pderiv_x, sample_x_diff, edge_order = 2)
+
+    expected_fun_pderiv_t = hydrodynamic_equations.diffusive_equation(fun_pderiv_xx, sample_D) 
+
+    assert np.allclose(expected_fun_pderiv_t, fun_pderiv_t, rtol = 1e-4, atol = 1e-5)
+
+
 #Now verify correct behavior of solver-wrapped functions... 
 
 
