@@ -67,8 +67,13 @@ def _handle_method(method, x_diff):
         fin_diff_funcs = [_eval_forward_euler, _pderiv_x_forward_euler_factory(x_diff), 
                      _pderiv_xx_forward_euler_factory(x_diff)] 
         stepper = _stepper_forward_euler
+    elif method == "leapfrog":
+        time_order = 2
+        fin_diff_funcs = [_eval_leapfrog, _pderiv_x_leapfrog_factory(x_diff), 
+                          _pderiv_xx_leapfrog_factory(x_diff)]
+        stepper = _stepper_leapfrog
     else:
-        raise ValueError("Allowed methods are: 'forward_euler'")
+        raise ValueError("Allowed methods are: 'forward_euler', 'leapfrog'")
     
     return (time_order, fin_diff_funcs, stepper)
 
