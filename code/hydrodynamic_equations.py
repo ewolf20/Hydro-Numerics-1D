@@ -78,6 +78,28 @@ def momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c):
 def momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma):
     return -1.0 * (u * u_pderiv_x + np.power(rho, gamma - 2) * rho_pderiv_x)
 
+#VISCOUS EQUATIONS
+
+#NOTE: Generically, there are two relevant viscosities in the hydrodynamic equations. However, for 1D flow, 
+#only a certain linear combination of them is relevant: 4/3 eta + zeta. We will then condense these into one 
+#quantity, which we call eta but is actually eta + 3/4 zeta. 
+
+#CONSTANT VISCOSITY
+
+def _viscosity_term(rho, u_pderiv_xx, eta):
+    return 1.0 / (rho) * (4/3 * eta) * u_pderiv_xx
+
+def momentum_euler_const_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, P_pderiv_x, eta):
+    return momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x) + _viscosity_term(rho, u_pderiv_xx, eta)
+
+#Contradiction ahoy - we ignore the entropic effects of viscosity and only model the momentum damping
+def momentum_euler_const_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, c, eta):
+    return momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c) + _viscosity_term(rho, u_pderiv_xx, eta)
+
+
+def momentum_euler_const_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, gamma, eta):
+    return (momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma) + 
+            _viscosity_term(rho, u_pderiv_xx, eta))
 
 
 #PURELY DIFFUSIVE DYNAMICS
@@ -88,6 +110,8 @@ def diffusive_equation(A_pderiv_xx, diffusivity):
 
 
 #STEPPER_WRAPPED 
+
+#INVISCID
 
 def euler_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pressure_func):
     rho_vals, u_vals = state_vars_stack
@@ -131,3 +155,62 @@ def euler_equations_isentropic_polytropic_solver_wrapped(state_vars_stack, eval,
     u_rhs = momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma)
 
     return np.stack((rho_rhs, u_rhs))
+
+
+#VISCOUS EULER 
+
+#Const viscosity
+
+def euler_equations_const_viscosity_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, 
+                                           eta):
+    rho_vals, u_vals = state_vars_stack
+    rho = eval(rho_vals) 
+    u = eval(u_vals) 
+    rho_pderiv_x = pderiv_x(rho_vals) 
+    u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
+
+    pressures = pressure_func(state_vars_stack) 
+    P_pderiv_x = pderiv_x(pressures) 
+
+    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x) 
+    u_rhs = momentum_euler_const_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, 
+                                                            P_pderiv_x, eta)
+
+    return np.stack((rho_rhs, u_rhs))
+
+
+def euler_equations_const_viscosty_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx,
+                                                              c_func, eta):
+    rho_vals, u_vals = state_vars_stack
+    rho = eval(rho_vals) 
+    u = eval(u_vals) 
+    rho_pderiv_x = pderiv_x(rho_vals) 
+    u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
+
+    c_vals = c_func(state_vars_stack)
+    c = eval(c_vals)
+
+    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
+    u_rhs = momentum_euler_const_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, 
+                                                               u_pderiv_xx, c, eta)
+
+    return np.stack((rho_rhs, u_rhs))
+
+
+def euler_equations_const_viscosity_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, 
+                                                            pderiv_x, pderiv_xx, gamma, eta):
+    rho_vals, u_vals = state_vars_stack
+    rho = eval(rho_vals) 
+    u = eval(u_vals) 
+    rho_pderiv_x = pderiv_x(rho_vals) 
+    u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
+
+    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
+    u_rhs = momentum_euler_const_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, 
+                                                    u_pderiv_x, u_pderiv_xx, gamma, eta)
+
+    return np.stack((rho_rhs, u_rhs))
+    
