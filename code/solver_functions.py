@@ -77,6 +77,23 @@ def _handle_method(method, x_diff):
     
     return (time_order, fin_diff_funcs, stepper)
 
+#Helper functions, so that we don't rewrite the same finite difference scheme 
+#a million times 
+
+#Implement pderiv_x with np.gradient
+#Equivalent in the bulk to: 
+#   partial_x u_j = 1.0 / (2 Delta x) * (u_{j + 1} - u_{j - 1})
+def _pderiv_x_helper(current_var, x_diff):
+    pderiv_x = np.gradient(current_var, x_diff, edge_order = 2)
+    return pderiv_x
+
+#Double invocation of np.gradient???
+#Not very local, but maybe that's a good thing? Equivalent in the bulk to: 
+#   partial_xx u_j = 1.0 / (4 Delta x^2) (u_{j + 2} - 2 u_{j} + u_{j - 2})
+def _pderiv_xx_helper(current_var, x_diff):
+        pderiv_x = np.gradient(current_var, x_diff, edge_order = 2) 
+        pderiv_xx = np.gradient(pderiv_x, x_diff, edge_order = 2)
+        return pderiv_xx
 
 #Forward Euler integration
 def _eval_forward_euler(state_var):
@@ -85,17 +102,14 @@ def _eval_forward_euler(state_var):
 def _pderiv_x_forward_euler_factory(x_diff): 
     def _pderiv_x_forward_euler(state_var):
         current_var = state_var[0]
-        pderiv_x = np.gradient(current_var, x_diff, edge_order = 2)
-        return pderiv_x
+        return _pderiv_x_helper(current_var, x_diff)
     return _pderiv_x_forward_euler
 
 
 def _pderiv_xx_forward_euler_factory(x_diff):
     def _pderiv_xx_forward_euler(state_var):
         current_var = state_var[0]
-        pderiv_x = np.gradient(current_var, x_diff, edge_order = 2)
-        pderiv_xx = np.gradient(pderiv_x, x_diff, edge_order = 2) 
-        return pderiv_xx
+        return _pderiv_xx_helper(current_var, x_diff)
     return _pderiv_xx_forward_euler
 
 
@@ -107,24 +121,21 @@ def _stepper_forward_euler(wrapped_equation, state_vars_stack, num_funcs, t_diff
 
 #Leapfrog integration
 def _eval_leapfrog(state_var):
-    return state_var[1]
+    return state_var[0]
 
 def _pderiv_x_leapfrog_factory(x_diff):
     def _pderiv_x_leapfrog(state_var):
-        current_var = state_var[1] 
-        pderiv_x = np.gradient(current_var, x_diff, edge_order = 2) 
-        return pderiv_x 
+        current_var = state_var[0] 
+        return _pderiv_x_helper(current_var, x_diff)
     return _pderiv_x_leapfrog
 
 def _pderiv_xx_leapfrog_factory(x_diff):
     def _pderiv_xx_leapfrog(state_var):
-        current_var = state_var[1] 
-        pderiv_x = np.gradient(current_var, x_diff, edge_order = 2) 
-        pderiv_xx = np.gradient(pderiv_x, x_diff, edge_order = 2) 
-        return pderiv_xx 
+        current_var = state_var[0]
+        return _pderiv_xx_helper(current_var, x_diff)
     return _pderiv_xx_leapfrog
 
 def _stepper_leapfrog(wrapped_equation, state_vars_stack, num_funcs, t_diff):
     rhs = wrapped_equation(state_vars_stack, *num_funcs)
-    new_state = state_vars_stack[:, 0] + rhs * 2 * t_diff
+    new_state = state_vars_stack[:, 1] + rhs * 2 * t_diff
     return new_state

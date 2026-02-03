@@ -46,19 +46,19 @@ def test_solve_equations():
     
     A_vals_fe, = state_vars_forward_euler 
 
-    initial_A_vals_fe = A_vals_fe[0] 
-    final_A_vals_fe = A_vals_fe[-1] 
+    initial_A_vals_fe = A_vals_fe[0]
+    final_A_vals_fe = A_vals_fe[-1]
 
     assert np.allclose(initial_A_vals_fe, initial_state)
     assert np.allclose(final_A_vals_fe, expected_final_state_fe, rtol = 1e-2, atol = 1e-5)
 
     #Now try leapfrog integration of the (advective) 1D Euler equations
     #Restrict interest to areas of nonzero density, and away from cusps
-    advective_x_range = np.linspace(-0.8, 2.5, 3000) 
+    advective_x_range = np.linspace(-0.8, 2.5, 3000)
     advective_xdiff = np.diff(advective_x_range)[-1]
     #Set t step smaller than x step
     advective_tdiff = 1e-5
-    advective_num_steps = 100000
+    advective_num_steps = 10000
 
     euler_gamma = 5/3 
     
@@ -83,7 +83,7 @@ def test_solve_equations():
     times_leapfrog, state_vars_leapfrog = solver_functions.solve_equations(
         gamma_specified_euler, 
         initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps, 
-        deriv_order = 1, output_increment = 10000, print_progress = True)
+        method = "leapfrog", deriv_order = 1, output_increment = 10000, print_progress = True)
 
     final_time_leapfrog = times_leapfrog[-1] 
 
@@ -97,7 +97,7 @@ def test_solve_equations():
     final_state_leapfrog = state_vars_leapfrog[:, -1] 
     final_rho_leapfrog, final_velocity_leapfrog = final_state_leapfrog 
 
-    #Numerics are very dicey, but seem to be capturing the correct behavior...
-    assert np.allclose(expected_final_rho_leapfrog, final_rho_leapfrog, atol = 2e-3, rtol = 1e-2)
-    assert np.allclose(expected_final_velocity_leapfrog, final_velocity_leapfrog, atol = 1e-2, rtol = 5e-2)
+    #Numerics are imperfect, but captures correct behavior...
+    assert np.allclose(expected_final_rho_leapfrog, final_rho_leapfrog, atol = 1e-4, rtol = 1e-3)
+    assert np.allclose(expected_final_velocity_leapfrog, final_velocity_leapfrog, atol = 1e-4, rtol = 1e-3)
 
