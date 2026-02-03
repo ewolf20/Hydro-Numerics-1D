@@ -75,7 +75,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
         print("Number steps: {0:.0f}".format(t_steps))
         tick = time.time()
 
-
+    success = True
     for i in range(t_steps): 
         state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
 
@@ -83,11 +83,10 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
             #If an infinity happened, return the last non-infinite step we have 
             output_time_list.append(i * t_diff)
             output_state_list.append(current_state_vars_stack[:, 0])
-            output_time_array = np.array(output_time_list) 
-            output_state_array = np.array(output_state_list) 
-            return (False, output_time_array, output_state_array)
+            success = False 
+            break
 
-        if i == print_progress_index:
+        if print_progress and i == print_progress_index:
             tock = time.time() 
             elapsed = tock - tick 
             estimated_time = elapsed / PRINT_PROGRESS_COMPLETION_FRACTION
@@ -108,7 +107,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
     output_state_array = np.moveaxis(output_state_array, 1, 0) 
     
     if check_finite:
-        return (True, output_time_array, output_state_array)
+        return (success, output_time_array, output_state_array)
     else:
         return (output_time_array, output_state_array)
 
