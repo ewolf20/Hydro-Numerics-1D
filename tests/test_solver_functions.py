@@ -3,6 +3,7 @@ import sys
 
 import numpy as np 
 import matplotlib.pyplot as plt
+import scipy
 
 
 path_to_file = os.path.dirname(os.path.abspath(__file__))
@@ -38,16 +39,18 @@ def test_solve_equations():
     times_forward_euler, state_vars_forward_euler = solver_functions.solve_equations(
         diffusive_equations_solver_wrapped, initial_state_reshaped, diffusive_xdiff, 
         diffusive_tdiff, diffusive_num_steps, method = "forward_euler", 
-        deriv_order = 2, output_increment = 10000, print_progress = True)
+        deriv_order = 2, output_increment = 10000,
+        check_finite = False)
     
     expected_final_state_fe = analytic_functions.diffusive_gaussian(
         times_forward_euler[-1], diffusive_xrange, diffusive_sample_sigma_0, 
         diffusive_sample_D)
-    
+        
     A_vals_fe, = state_vars_forward_euler 
 
     initial_A_vals_fe = A_vals_fe[0]
     final_A_vals_fe = A_vals_fe[-1]
+
 
     assert np.allclose(initial_A_vals_fe, initial_state)
     assert np.allclose(final_A_vals_fe, expected_final_state_fe, rtol = 1e-2, atol = 1e-5)
@@ -83,7 +86,7 @@ def test_solve_equations():
     times_leapfrog, state_vars_leapfrog = solver_functions.solve_equations(
         gamma_specified_euler, 
         initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps, 
-        method = "leapfrog", deriv_order = 1, output_increment = 10000, print_progress = True)
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False)
 
     final_time_leapfrog = times_leapfrog[-1] 
 
@@ -101,3 +104,43 @@ def test_solve_equations():
     assert np.allclose(expected_final_rho_leapfrog, final_rho_leapfrog, atol = 1e-4, rtol = 1e-3)
     assert np.allclose(expected_final_velocity_leapfrog, final_velocity_leapfrog, atol = 1e-4, rtol = 1e-3)
 
+    #Now deliberately engineer an unstable evolution of the equations... 
+    num_x_samples_unstable = 2000
+    advective_x_range_unstable = np.linspace(-2.0, 5.0, num_x_samples_unstable)
+    advective_xdiff_unstable = np.diff(advective_x_range)[-1]
+    #Set t step smaller than x step
+    advective_tdiff_unstable = 1e-4
+    advective_num_steps_unstable = 10000
+
+    initial_time_unstable = 0.1
+
+    euler_gamma = 5/3 
+
+    ghost_density_unstable = 1e-2
+
+
+    initial_rho_unstable = -0.5 * scipy.special.erf(advective_x_range_unstable / initial_time_unstable) + 0.5
+    initial_velocity_unstable = np.zeros(advective_x_range_unstable.size)
+
+    #Pad the initial rho distribution with a 'ghost density'
+    initial_rho_unstable = (1 - ghost_density_unstable) * initial_rho_unstable + ghost_density_unstable
+
+    initial_state_unstable = np.stack((initial_rho_unstable, initial_velocity_unstable))
+
+    times_leapfrog_unstable, state_vars_leapfrog_unstable = solver_functions.solve_equations(
+            gamma_specified_euler,
+            initial_state_unstable, advective_xdiff_unstable, advective_tdiff_unstable, advective_num_steps_unstable, 
+            method = "leapfrog", deriv_order = 1, check_finite = False)
+    
+    assert not np.all(np.isfinite(state_vars_leapfrog_unstable))
+
+    success_checked, times_leapfrog_unstable_checked, state_vars_leapfrog_unstable_checked = solver_functions.solve_equations(
+            gamma_specified_euler,
+            initial_state_unstable, advective_xdiff_unstable, advective_tdiff_unstable, advective_num_steps_unstable, 
+            method = "leapfrog", deriv_order = 1, check_finite = True)
+    
+    
+    assert not success_checked
+    assert np.all(np.isfinite(state_vars_leapfrog_unstable_checked))
+    assert times_leapfrog_unstable[-1] > times_leapfrog_unstable_checked[-1]
+    

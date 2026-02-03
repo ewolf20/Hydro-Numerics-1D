@@ -2,9 +2,52 @@ import time
 
 import numpy as np 
 
+"""
+General purpose equation solver for 1+1D partial differential equations. 
 
+Given a set of equations wrapped_equation, evolve a given set of 1+1D partial differential equations
+ using a user-specified method.
+
+Parameters: 
+
+    wrapped_equation: A function encoding the derivative system to be solved. Call signature must be 
+        wrapped_equation(state_vars_stack, *fin_diff_funcs), with state_vars_stack a (k, l, N) array 
+        as documented in hydrodynamic_equations.py, and with *fin_diff_funcs a set of functions with 
+        signature fin_diff_func(state_var), where state_var is (l, N), also as documented. fin_diff_funcs 
+        encode the finite difference scheme used to evalutate the function and its partial derivatives, 
+        and must be in the order eval, pderiv_x, pderiv_xx, ... 
+
+    initial_state: A (k, N) array encoding the initial state of the system at t=0 for all x-points. 
+
+    x_diff: The evolution assumes evenly spaced x points with spacing x_diff 
+
+    t_diff: The time spacing used by the method. Some methods use higher-order steps in time - the 
+        convention for t_diff is that t_diff * t_steps is equal to the total evolution time. 
+
+    t_steps: The number of time steps used by the solver. 
+
+    deriv_order: The order of partial derivatives appearing in wrapped-equation; e.g. if only pderiv_x 
+    and eval appear, then deriv_order = 1
+
+    output_increment: The number of steps to increment between output states + times of the system. If 
+    None, output_increment will be chosen so that approximately 100 steps are output. 
+
+    print_progress: If true, the solver will issue print statements meant to estimate its total runtime
+
+    check_finite: If True, the solver will check at each stage whether the system state is finite 
+    (i.e. not np.inf or np.nan); if this condition fails, the solver will abort and return the system evolution 
+    up to the last finite state. 
+
+    Returns: 
+
+    If check_finite, a tuple (success, times, states). Success is a boolean representing whether the system 
+    diverged at any point. Times is a length L 1D array containing evolution times, and states is a (k, L, N) 
+    array of the system state at all the corresponding times. If check_finite is false, only (times, states) is 
+    returned.
+"""
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
-                    deriv_order = 1, output_increment = None, print_progress = False):
+                    deriv_order = 1, output_increment = None, print_progress = False, 
+                    check_finite = True):
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff)
     equation_fin_diff_funcs = method_fin_diff_funcs[:deriv_order + 1]
 
@@ -18,7 +61,6 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     #Massage initial_state into the form required by the stepper 
     #Initial state should be a 2D array; insert a time axis in position 1
-    # target_shape = (initial_state.shape[0], method_time_order, initial_state.shape[1])
     initial_state_dim_expanded = np.expand_dims(initial_state, axis = 1)
     initial_state_reshaped = np.repeat(initial_state_dim_expanded, method_time_order, axis = 1)
 
@@ -33,11 +75,18 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
         print("Number steps: {0:.0f}".format(t_steps))
         tick = time.time()
 
-
+    success = True
     for i in range(t_steps): 
         state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
 
-        if i == print_progress_index:
+        if check_finite and not np.all(np.isfinite(state_update)):
+            #If an infinity happened, return the last non-infinite step we have 
+            output_time_list.append(i * t_diff)
+            output_state_list.append(current_state_vars_stack[:, 0])
+            success = False 
+            break
+
+        if print_progress and i == print_progress_index:
             tock = time.time() 
             elapsed = tock - tick 
             estimated_time = elapsed / PRINT_PROGRESS_COMPLETION_FRACTION
@@ -46,7 +95,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
         #For correct 'fencepost' logic, we should use this...
         if (i + 1) % output_increment == 0:
             output_state_list.append(state_update)
-            output_time_list.append(i * t_diff)
+            output_time_list.append((i + 1) * t_diff)
 
         current_state_vars_stack[:, 1:] = current_state_vars_stack[:, :-1] 
         current_state_vars_stack[:, 0] = state_update
@@ -57,7 +106,10 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
     #Reshape to standard form of state variable index first 
     output_state_array = np.moveaxis(output_state_array, 1, 0) 
     
-    return (output_time_array, output_state_array)
+    if check_finite:
+        return (success, output_time_array, output_state_array)
+    else:
+        return (output_time_array, output_state_array)
 
 
 #Handle method
