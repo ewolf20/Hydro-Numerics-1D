@@ -108,17 +108,22 @@ def momentum_euler_const_viscosity_isentropic_polytropic_equation(rho, u, rho_pd
 #VARIABLE VISCOSITY 
 
 #Here, no longer assume that the viscosity is constant. This makes the form of the viscous term more annoying.
-#We define u_eta_pderiv_combo = partial_x (4/3 eta partial_x u)
+#We manually expand the derivative partial_x (4/3 eta partial_x u) = 4/3 (partial_x eta partial_x u + eta partial_xx u)
 
-def momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, P_pderiv_x, u_eta_pderiv_combo):
-    return momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x) + 1.0 / rho * u_eta_pderiv_combo
+def _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x):
+    return 4 / (3 * rho) * (u_pderiv_x * eta_pderiv_x + eta * u_pderiv_xx)
 
-def momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_eta_pderiv_combo, c):
-    return momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c) + 1.0 / rho * u_eta_pderiv_combo
+def momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, P_pderiv_x):
+    return momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x) + _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, 
+                                                                                    eta, eta_pderiv_x)
 
-def momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_eta_pderiv_combo, gamma): 
-    return momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma) + 1.0 / rho * u_eta_pderiv_combo
+def momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, c):
+    return momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c) + _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, eta, 
+                                                                                                         eta_pderiv_x)
 
+def momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, gamma): 
+    return momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma) + _var_viscosity_term(
+        rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x)
 
 
 #PURELY DIFFUSIVE DYNAMICS
@@ -236,68 +241,68 @@ def euler_equations_const_viscosity_isentropic_polytropic_solver_wrapped(state_v
 
 #Variable viscosity
 
-def euler_equations_var_viscosity_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pressure_func, 
+def euler_equations_var_viscosity_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, 
                                            eta_func):
     rho_vals, u_vals = state_vars_stack
     rho = eval(rho_vals)
     u = eval(u_vals)
     rho_pderiv_x = pderiv_x(rho_vals)
     u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
 
     eta_vals = eta_func(state_vars_stack)
     eta = eval(eta_vals)
-    u_eta_combo = 4/3 * eta * u_pderiv_x
-    u_eta_pderiv_combo = pderiv_x(u_eta_combo, bypass_time = True)
+    eta_pderiv_x = pderiv_x(eta_vals)
 
     pressures = pressure_func(state_vars_stack)
     P_pderiv_x = pderiv_x(pressures)
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, P_pderiv_x, 
-                                                          u_eta_pderiv_combo)
+    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
+                                                          eta_pderiv_x, P_pderiv_x)
 
     return np.stack((rho_rhs, u_rhs))
 
 
-def euler_equations_var_viscosity_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x,
+def euler_equations_var_viscosity_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx,
                                                               c_func, eta_func):
     rho_vals, u_vals = state_vars_stack
     rho = eval(rho_vals) 
     u = eval(u_vals) 
     rho_pderiv_x = pderiv_x(rho_vals) 
     u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
 
     eta_vals = eta_func(state_vars_stack)
     eta = eval(eta_vals)
-    u_eta_combo = 4/3 * eta * u_pderiv_x 
-    u_eta_pderiv_combo = pderiv_x(u_eta_combo, bypass_time = True)
+    eta_pderiv_x = pderiv_x(eta_vals)
 
     c_vals = c_func(state_vars_stack)
     c = eval(c_vals)
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, 
-                                                             u_eta_pderiv_combo, c)
+    u_rhs = momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, 
+                                                             eta, eta_pderiv_x, c)
 
     return np.stack((rho_rhs, u_rhs))
 
 
 def euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, 
-                                                                       pderiv_x, gamma, eta_func):
+                                                                       pderiv_x, pderiv_xx, gamma, eta_func):
     
     rho_vals, u_vals = state_vars_stack 
     rho = eval(rho_vals) 
     u = eval(u_vals) 
     rho_pderiv_x = pderiv_x(rho_vals) 
     u_pderiv_x = pderiv_x(u_vals) 
+    u_pderiv_xx = pderiv_xx(u_vals)
 
     eta_vals = eta_func(state_vars_stack) 
     eta = eval(eta_vals)
-    u_eta_combo = 4/3 * eta * u_pderiv_x
-    u_eta_pderiv_combo = pderiv_x(u_eta_combo, bypass_time = True)
+    eta_pderiv_x = pderiv_x(eta_vals)
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, 
-                                                                        u_eta_pderiv_combo, gamma)
+    u_rhs = momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, 
+                                                                        eta, eta_pderiv_x, gamma)
     
     return np.stack((rho_rhs, u_rhs))

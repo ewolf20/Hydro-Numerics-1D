@@ -116,13 +116,13 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 def _handle_method(method, x_diff):
     if method == "forward_euler":
         time_order = 1 
-        fin_diff_funcs = [_eval_recent, _pderiv_x_recent_factory(x_diff), 
-                     _pderiv_xx_recent_factory(x_diff)] 
+        fin_diff_funcs = [_eval_fe, _pderiv_x_fe_factory(x_diff), 
+                     _pderiv_xx_fe_factory(x_diff)] 
         stepper = _stepper_forward_euler
     elif method == "leapfrog":
         time_order = 2
-        fin_diff_funcs = [_eval_recent, _pderiv_x_recent_factory(x_diff), 
-                          _pderiv_xx_recent_factory(x_diff)]
+        fin_diff_funcs = [_eval_leapfrog, _pderiv_x_leapfrog_factory(x_diff), 
+                          _pderiv_xx_leapfrog_factory(x_diff)]
         stepper = _stepper_leapfrog
     else:
         raise ValueError("Allowed methods are: 'forward_euler', 'leapfrog'")
@@ -147,35 +147,23 @@ def _pderiv_xx_helper(current_var, x_diff):
         pderiv_xx = np.gradient(pderiv_x, x_diff, edge_order = 2)
         return pderiv_xx
 
-#Common eval functions 
-#Evaluates function values, partial derivs, etc using most recent data
-def _eval_recent(state_var, bypass_time = False):
-    if not bypass_time:
-        return state_var[0]
-    else:
-        return state_var
+#Forward Euler methods
+def _eval_fe(state_var):
+    return state_var[0]
 
-def _pderiv_x_recent_factory(x_diff): 
-    def _pderiv_x_recent(state_var, bypass_time = False):
-        if not bypass_time:
-            current_var = state_var[0]
-        else:
-            current_var = state_var
+def _pderiv_x_fe_factory(x_diff): 
+    def _pderiv_x_fe(state_var):
+        current_var = state_var[0]
         return _pderiv_x_helper(current_var, x_diff)
-    return _pderiv_x_recent
+    return _pderiv_x_fe
 
 
-def _pderiv_xx_recent_factory(x_diff):
-    def _pderiv_xx_recent(state_var, bypass_time = False):
-        if not bypass_time:
-            current_var = state_var[0]
-        else:
-            current_var = state_var
+def _pderiv_xx_fe_factory(x_diff):
+    def _pderiv_xx_fe(state_var):
+        current_var = state_var[0]
         return _pderiv_xx_helper(current_var, x_diff)
-    return _pderiv_xx_recent
+    return _pderiv_xx_fe
 
-
-#Forward Euler integration
 
 def _stepper_forward_euler(wrapped_equation, state_vars_stack, num_funcs, t_diff):
     rhs = wrapped_equation(state_vars_stack, *num_funcs) 
@@ -184,7 +172,24 @@ def _stepper_forward_euler(wrapped_equation, state_vars_stack, num_funcs, t_diff
 
 
 #Leapfrog integration
-#Remark: The below numerical functions are identical to those used for 
+#NOTE: We deliberately evaluate the zeroth and second derivatives at different time locations from the first.
+#This attempts to treat the advective terms via leapfrog and the diffusive via (modified) forward euler
+#Diffusive terms are unstable in the leapfrog method 
+
+def _eval_leapfrog(state_var):
+    return state_var[1]
+
+def _pderiv_x_leapfrog_factory(x_diff):
+    def _pderiv_x_leapfrog(state_var):
+        current_var = state_var[0] 
+        return _pderiv_x_helper(current_var, x_diff)
+    return _pderiv_x_leapfrog
+
+def _pderiv_xx_leapfrog_factory(x_diff):
+    def _pderiv_xx_leapfrog(state_var):
+        current_var = state_var[1] 
+        return _pderiv_xx_helper(current_var, x_diff)
+    return _pderiv_xx_leapfrog
 
 def _stepper_leapfrog(wrapped_equation, state_vars_stack, num_funcs, t_diff):
     rhs = wrapped_equation(state_vars_stack, *num_funcs)
