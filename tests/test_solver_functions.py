@@ -55,6 +55,25 @@ def test_solve_equations():
     assert np.allclose(initial_A_vals_fe, initial_state)
     assert np.allclose(final_A_vals_fe, expected_final_state_fe, rtol = 1e-2, atol = 1e-5)
 
+    #Try (modified) leapfrog integration of the diffusive equation above 
+
+    times_diffusive_leapfrog, state_vars_diffusive_leapfrog = solver_functions.solve_equations(
+        diffusive_equations_solver_wrapped, initial_state_reshaped, diffusive_xdiff, 
+        diffusive_tdiff, diffusive_num_steps, method = "leapfrog", deriv_order = 2, 
+        output_increment = 10000, check_finite = False)
+    
+    A_vals_diffusive_leap, = state_vars_diffusive_leapfrog
+    
+    initial_A_vals_diffusive_leap = A_vals_diffusive_leap[0] 
+    final_A_vals_diffusive_leap = A_vals_diffusive_leap[-1] 
+
+    expected_final_state_diffusive_leap = analytic_functions.diffusive_gaussian(
+        times_diffusive_leapfrog[-1], diffusive_xrange, diffusive_sample_sigma_0, 
+        diffusive_sample_D)
+    
+    assert np.allclose(initial_A_vals_diffusive_leap, initial_state)
+    assert np.allclose(final_A_vals_diffusive_leap, expected_final_state_diffusive_leap, rtol = 1e-2, atol = 1e-5)
+
     #Now try leapfrog integration of the (advective) 1D Euler equations
     #Restrict interest to areas of nonzero density, and away from cusps
     advective_x_range = np.linspace(-0.8, 2.5, 3000)
