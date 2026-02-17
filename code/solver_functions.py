@@ -116,8 +116,8 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 def _handle_method(method, x_diff):
     if method == "forward_euler":
         time_order = 1 
-        fin_diff_funcs = [_eval_forward_euler, _pderiv_x_forward_euler_factory(x_diff), 
-                     _pderiv_xx_forward_euler_factory(x_diff)] 
+        fin_diff_funcs = [_eval_fe, _pderiv_x_fe_factory(x_diff), 
+                     _pderiv_xx_fe_factory(x_diff)] 
         stepper = _stepper_forward_euler
     elif method == "leapfrog":
         time_order = 2
@@ -147,22 +147,22 @@ def _pderiv_xx_helper(current_var, x_diff):
         pderiv_xx = np.gradient(pderiv_x, x_diff, edge_order = 2)
         return pderiv_xx
 
-#Forward Euler integration
-def _eval_forward_euler(state_var):
-    return state_var[0] 
+#Forward Euler methods
+def _eval_fe(state_var):
+    return state_var[0]
 
-def _pderiv_x_forward_euler_factory(x_diff): 
-    def _pderiv_x_forward_euler(state_var):
+def _pderiv_x_fe_factory(x_diff): 
+    def _pderiv_x_fe(state_var):
         current_var = state_var[0]
         return _pderiv_x_helper(current_var, x_diff)
-    return _pderiv_x_forward_euler
+    return _pderiv_x_fe
 
 
-def _pderiv_xx_forward_euler_factory(x_diff):
-    def _pderiv_xx_forward_euler(state_var):
+def _pderiv_xx_fe_factory(x_diff):
+    def _pderiv_xx_fe(state_var):
         current_var = state_var[0]
         return _pderiv_xx_helper(current_var, x_diff)
-    return _pderiv_xx_forward_euler
+    return _pderiv_xx_fe
 
 
 def _stepper_forward_euler(wrapped_equation, state_vars_stack, num_funcs, t_diff):
@@ -172,8 +172,12 @@ def _stepper_forward_euler(wrapped_equation, state_vars_stack, num_funcs, t_diff
 
 
 #Leapfrog integration
+#NOTE: We deliberately evaluate the zeroth and second derivatives at different time locations from the first.
+#This attempts to treat the advective terms via leapfrog and the diffusive via (modified) forward euler
+#Diffusive terms are unstable in the leapfrog method 
+
 def _eval_leapfrog(state_var):
-    return state_var[0]
+    return state_var[1]
 
 def _pderiv_x_leapfrog_factory(x_diff):
     def _pderiv_x_leapfrog(state_var):
@@ -183,7 +187,7 @@ def _pderiv_x_leapfrog_factory(x_diff):
 
 def _pderiv_xx_leapfrog_factory(x_diff):
     def _pderiv_xx_leapfrog(state_var):
-        current_var = state_var[0]
+        current_var = state_var[1] 
         return _pderiv_xx_helper(current_var, x_diff)
     return _pderiv_xx_leapfrog
 

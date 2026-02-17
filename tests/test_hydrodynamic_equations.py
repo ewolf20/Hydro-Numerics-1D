@@ -51,18 +51,22 @@ def _get_euler_reference_vals_and_derivs():
     rho_pderiv_x = 1 / (2.0 * x_diff) * (rho[2:] - rho[:-2]) 
     u_pderiv_x = 1 / (2.0 * x_diff) * (u[2:] - u[:-2])
 
+    #Also need u_pderiv_xx for viscosity terms 
+    u_pderiv_xx = 1 / (np.square(x_diff)) * (u[2:] - 2 * u[1:-1] + u[:-2])
+
+
     #Clip to match with spatial derivatives
     rho = rho[1:-1] 
     u = u[1:-1] 
     rho_pderiv_t = rho_pderiv_t[1:-1] 
     u_pderiv_t = u_pderiv_t[1:-1]
 
-    return (rho, u, rho_pderiv_x, u_pderiv_x, rho_pderiv_t, u_pderiv_t)
+    return (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, rho_pderiv_t, u_pderiv_t)
 
 
 
 def test_continuity_equation():
-    (rho, u, rho_pderiv_x, u_pderiv_x,
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
       rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs() 
     
     continuity_rhs = hydrodynamic_equations.continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
@@ -71,7 +75,7 @@ def test_continuity_equation():
 
 
 def test_momentum_euler_isentropic_polytropic_equation():
-    (rho, u, rho_pderiv_x, u_pderiv_x, 
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs() 
     
     momentum_euler_rhs = hydrodynamic_equations.momentum_euler_isentropic_polytropic_equation(
@@ -82,7 +86,7 @@ def test_momentum_euler_isentropic_polytropic_equation():
 
 
 def test_momentum_euler_isentropic_equation():
-    (rho, u, rho_pderiv_x, u_pderiv_x,
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
       rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
     
     c_values = analytic_functions.normalized_speed_of_sound_isentropic_polytropic_eos(
@@ -96,7 +100,7 @@ def test_momentum_euler_isentropic_equation():
     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-5, atol = 1e-6)
 
 def test_momentum_euler_generic_equation():
-    (rho, u, rho_pderiv_x, u_pderiv_x, 
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
     
     pressure_values = analytic_functions.normalized_pressure_isentropic_polytropic_eos(
@@ -117,6 +121,42 @@ def test_momentum_euler_generic_equation():
     #Slightly looser tolerance - maybe the pressure derivative is the issue...
     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-4, atol = 1e-5)
 
+
+#Just test viscosity for the polytropic case... 
+
+#Const viscosity
+def test_momentum_euler_const_viscosity_isentropic_polytropic_equation(): 
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
+     rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs() 
+    
+    sample_eta = 0.1
+    
+    momentum_euler_rhs_viscous = hydrodynamic_equations.momentum_euler_const_viscosity_isentropic_polytropic_equation(
+        rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, SCALE_INVARIANT_GAMMA, sample_eta
+    )
+
+    momentum_euler_rhs_viscous_subtracted = momentum_euler_rhs_viscous - 1.0 / rho * (4/3) * u_pderiv_xx * sample_eta
+
+    assert np.allclose(u_pderiv_t, momentum_euler_rhs_viscous_subtracted, rtol = 1e-5, atol = 1e-6)
+
+
+
+#Var viscosity
+def test_momentum_euler_var_viscosity_isentropic_polytropic_equation():
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
+     rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
+    
+    sample_nu = 0.1
+    eta = rho * sample_nu
+    eta_pderiv_x = rho_pderiv_x * sample_nu
+    
+    momentum_euler_rhs_viscous = hydrodynamic_equations.momentum_euler_var_viscosity_isentropic_polytropic_equation(
+        rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, SCALE_INVARIANT_GAMMA)
+
+    viscous_correction = 1.0 / rho * (4/3) * (u_pderiv_xx * eta + eta_pderiv_x * u_pderiv_x)
+    momentum_euler_rhs_viscous_subtracted = momentum_euler_rhs_viscous - viscous_correction
+
+    assert np.allclose(u_pderiv_t, momentum_euler_rhs_viscous_subtracted, rtol = 1e-5, atol = 1e-6)
 
 
 def test_diffusivity_equation():
@@ -151,6 +191,13 @@ def _sample_eval(state_var):
 def _sample_pderiv_x(state_var):
     current_var = state_var[0]
     return np.gradient(current_var, x_diff, edge_order = 2)
+
+def _sample_pderiv_xx(state_var):
+    current_var = state_var[0]
+    return np.gradient(
+        np.gradient(current_var, x_diff, edge_order = 2),
+    x_diff, edge_order = 2)
+
 
 
 def test_euler_equations_isentropic_polytropic_solver_wrapped():
@@ -204,9 +251,58 @@ def test_euler_equations_generic_solver_wrapped():
         state_vars_stack_reshaped, _sample_eval, _sample_pderiv_x, pressure_func)
     
     assert np.allclose(expected_rhs, returned_rhs, rtol = 1e-4, atol = 1e-5)
+
+#Just test the polytropic case
+
+def test_euler_equations_const_viscosity_isentropic_polytropic_solver_wrapped():
+    (rho, u, *_, u_pderiv_xx,
+     rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
     
+    state_vars_stack = np.stack((rho, u))
+    #Reshape to accommodate required timestep axis for solver-wrapped function...
+    state_vars_stack_reshaped = np.expand_dims(state_vars_stack, axis = 1)
+
+    sample_eta = 0.1
+
+    expected_rhs = np.stack((rho_pderiv_t, u_pderiv_t))
+    returned_rhs_viscous = hydrodynamic_equations.euler_equations_const_viscosity_isentropic_polytropic_solver_wrapped(
+        state_vars_stack_reshaped, _sample_eval, _sample_pderiv_x, _sample_pderiv_xx, SCALE_INVARIANT_GAMMA, sample_eta)
+    
+    returned_rhs_viscous_corrected = returned_rhs_viscous
+    returned_rhs_viscous_corrected[1] -= 1.0 / rho * (4/3 * sample_eta) * u_pderiv_xx
+
+    assert np.allclose(expected_rhs, returned_rhs_viscous_corrected, rtol = 1e-4, atol = 1e-5)
 
 
+#Now test with non-constant viscosity
+def test_euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped():
+    (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
+     rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
+    
+    state_vars_stack = np.stack((rho, u))
+    #Reshape to accommodate required timestep axis for solver-wrapped function...
+    state_vars_stack_reshaped = np.expand_dims(state_vars_stack, axis = 1)
+
+    sample_nu = 0.1
+
+    def sample_eta_func(state_vars_stack):
+        rho, u = state_vars_stack
+        return sample_nu * rho
+
+    sample_eta_pderiv_x = sample_nu * rho_pderiv_x
+    sample_eta = sample_nu * rho
+
+    expected_rhs = np.stack((rho_pderiv_t, u_pderiv_t))
+
+    returned_rhs_viscous = hydrodynamic_equations.euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped(
+        state_vars_stack_reshaped, _sample_eval, _sample_pderiv_x, _sample_pderiv_xx, SCALE_INVARIANT_GAMMA, sample_eta_func)
+    
+    viscous_correction = (1.0 / rho) * 4/3 * (u_pderiv_xx * sample_eta + u_pderiv_x * sample_eta_pderiv_x)
+
+    returned_rhs_viscous_corrected = returned_rhs_viscous
+    returned_rhs_viscous_corrected[1] -= viscous_correction
+
+    assert np.allclose(expected_rhs, returned_rhs_viscous_corrected, rtol = 1e-3, atol = 1e-4)
 
 
-
+    
