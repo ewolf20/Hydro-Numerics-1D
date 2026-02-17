@@ -42,10 +42,7 @@ system of equations, e.g. the full Euler equations.
             
                 Each element of *fin_diff_funcs must have call signature 
                 fin_diff_func(vars[i]); that is, it takes the shape (l, N) for a given state variable.
-                It should have a return of shape (N). Optionally, a function fin_diff_func may have the boolean 
-                kwarg 'bypass_time', by default false - if True, the function should take input of shape (N,) instead 
-                of (l, N), effectively bypassing the time axis. This is useful in cases where fin_diff_func is invoked 
-                multiple times within a solver_wrapped function
+                It should have a return of shape (N).
 
             Remark: For some stepper-wrapped functions, it will be highly natural to pass functions unrelated 
             to derivative taking - e.g. a function mapping the state variables to pressure. These should not 
