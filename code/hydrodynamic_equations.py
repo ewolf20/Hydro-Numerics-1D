@@ -350,3 +350,26 @@ def navier_stokes_equations_generic_solver_wrapped(state_vars_stack, eval, pderi
                                      T_pderiv_x, T_pderiv_xx)
     
     return np.stack((rho_rhs, u_rhs, s_rhs))
+
+
+"""Given input state vars, calculate the total energy. 
+
+Params: 
+    state_vars_stack: An ND array of shape (k, ..., N), with k >= 2. The first axis is assumed to encode the state variables
+        (rho, u, ...), and the last encodes the 1D position axis - any other axes, if present, are broadcast over. 
+
+    epsilon_func: A function epsilon_func(state_vars) which takes as input the (k, ...) state vars ND array and returns 
+        the (normalized) energy per unit mass, according to the normalization: 
+
+        epsilon' = epsilon / c_0^2
+
+        If more axes than the first are present, they are broadcast over.
+
+    x_diff: Default 1.0. If specified, the x-difference (in sim units) between adjacent points along the last axis of 
+        state_vars_stack. Used as input to np.trapz.
+"""
+def get_hydro_total_energy(state_vars_stack, epsilon_func, x_diff = 1.0): 
+    rho, u, *_ = state_vars_stack 
+    epsilon = epsilon_func(state_vars_stack) 
+    integrand = 0.5 * rho * np.square(u) + rho * epsilon
+    return np.trapz(integrand, dx = x_diff, axis = -1)
