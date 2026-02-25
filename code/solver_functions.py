@@ -96,6 +96,8 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
         if (i + 1) % output_increment == 0:
             output_state_list.append(state_update)
             output_time_list.append((i + 1) * t_diff)
+            if print_progress: 
+                print("Completed: {0:.1f} %".format(100 * i / t_steps))
 
         current_state_vars_stack[:, 1:] = current_state_vars_stack[:, :-1] 
         current_state_vars_stack[:, 0] = state_update
