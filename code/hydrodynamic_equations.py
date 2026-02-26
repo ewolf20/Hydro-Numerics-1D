@@ -128,7 +128,7 @@ def momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pder
 
 def entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, T_pderiv_x, T_pderiv_xx):
     advective_term = -u * s_pderiv_x 
-    dissipative_part_visc = 8/9 * eta * np.square(u_pderiv_x) 
+    dissipative_part_visc = 4/3 * eta * np.square(u_pderiv_x) 
     dissipative_part_therm = kappa * T_pderiv_xx + kappa_pderiv_x * T_pderiv_x
     dissipative_term = 1.0 / (rho * T) * (dissipative_part_visc + dissipative_part_therm)
     return advective_term + dissipative_term
