@@ -39,6 +39,13 @@ Parameters:
 
     x_left: (float) The initial x-value of the leftmost simulation point. Default 0.0. Ditto above.
 
+    boundary_func: If not None, impose a boundary condition on the solver by applying the function 
+    boundary_func(state_vars) at the endpoints. The call signature of boundary_func should be to take in 
+    and return a shape (k,) array, representing the values of the individual state vars at the endpoints. 
+    The function uses the values of the state vars returned by the numerical scheme and imposes the boundary 
+    condition on the returned state vars. For instance, the booundary condition u = 0 is imposed as: 
+        f([rho, u, s]) = [rho, 0, s]
+
     output_increment: The number of steps to increment between output states + times of the system. If 
     None, output_increment will be chosen so that approximately 100 steps are output. 
 
@@ -46,9 +53,9 @@ Parameters:
 
     check_finite: If True, the solver will check at each stage whether the system state is finite 
     (i.e. not np.inf or np.nan); if this condition fails, the solver will abort and return the system evolution 
-    up to the last finite state. 
+    up to the last finite state.
 
-    Returns: 
+    Returns:
 
     If check_finite, a tuple (success, times, states). Success is a boolean representing whether the system 
     diverged at any point. Times is a length L 1D array containing evolution times, and states is a (k, L, N) 
@@ -56,8 +63,8 @@ Parameters:
     returned.
 """
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
-                    deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, output_increment = None, print_progress = False, 
-                    check_finite = True):
+                    deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, boundary_func = None, 
+                    output_increment = None, print_progress = False, check_finite = True):
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff, explicit_eq)
     equation_fin_diff_funcs = method_fin_diff_funcs[:deriv_order + 1]
 
@@ -74,7 +81,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
     initial_state_dim_expanded = np.expand_dims(initial_state, axis = 1)
     initial_state_reshaped = np.repeat(initial_state_dim_expanded, method_time_order, axis = 1)
 
-    current_state_vars_stack = initial_state_reshaped 
+    current_state_vars_stack = initial_state_reshaped
 
     #Define an array of x-positions for an explicit RHS
     if explicit_eq:
@@ -97,6 +104,11 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
             state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
         else:
             state_update = stepper(t, x_vals, wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
+
+        #Impose boundary function at endpoints
+        if not boundary_func is None:
+            state_update[:, 0] = boundary_func(state_update[:, 0])
+            state_update[:, -1] = boundary_func(state_update[:, -1])
 
         if check_finite and not np.all(np.isfinite(state_update)):
             #If an infinity happened, return the last non-infinite step we have 
