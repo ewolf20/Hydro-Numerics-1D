@@ -305,4 +305,28 @@ def test_euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped():
     assert np.allclose(expected_rhs, returned_rhs_viscous_corrected, rtol = 1e-3, atol = 1e-4)
 
 
-    
+def test_get_hydro_total_energy():
+    #Use the analytic result to verify constant energy for a simple case 
+    def sample_epsilon_func(state_vars):
+        rho, *_ = state_vars 
+        epsilon = 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.power(rho, SCALE_INVARIANT_GAMMA - 1)
+        return epsilon 
+
+    time_range = np.linspace(0.1, 1, 10)
+    X_RANGE_MIN = -3 
+    X_RANGE_MAX = 6
+    x_range = np.linspace(-3, 6, 100000)
+    x_diff = np.diff(x_range)[0]
+    time_grid, x_grid = np.meshgrid(time_range, x_range, indexing = "ij")
+    analytic_rho_values = analytic_functions.polytropic_riemann_expansion_density_profile(
+        time_grid, x_grid, gamma = SCALE_INVARIANT_GAMMA
+    )
+    analytic_u_values = analytic_functions.polytropic_riemann_expansion_velocity_profile(
+        time_grid, x_grid, gamma = SCALE_INVARIANT_GAMMA
+    )
+    state_vars_stack = np.stack((analytic_rho_values, analytic_u_values))
+    energies = hydrodynamic_equations.get_hydro_total_energy(state_vars_stack, sample_epsilon_func, 
+                                                             x_diff = x_diff)
+    expected_energy = 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.abs(X_RANGE_MIN)
+    assert np.allclose(energies, expected_energy)
+

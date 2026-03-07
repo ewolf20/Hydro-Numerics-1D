@@ -123,6 +123,17 @@ def momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pder
         rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x)
 
 
+#ENTROPY
+#We include a single equation, giving the evolution of the entropy
+
+def entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, T_pderiv_x, T_pderiv_xx):
+    advective_term = -u * s_pderiv_x 
+    dissipative_part_visc = 4/3 * eta * np.square(u_pderiv_x) 
+    dissipative_part_therm = kappa * T_pderiv_xx + kappa_pderiv_x * T_pderiv_x
+    dissipative_term = 1.0 / (rho * T) * (dissipative_part_visc + dissipative_part_therm)
+    return advective_term + dissipative_term
+
+
 #PURELY DIFFUSIVE DYNAMICS
 #Included mostly for testing purposes...
 
@@ -283,7 +294,6 @@ def euler_equations_var_viscosity_isentropic_solver_wrapped(state_vars_stack, ev
 
     return np.stack((rho_rhs, u_rhs))
 
-
 def euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, 
                                                                        pderiv_x, pderiv_xx, gamma, eta_func):
     
@@ -303,3 +313,63 @@ def euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped(state_var
                                                                         eta, eta_pderiv_x, gamma)
     
     return np.stack((rho_rhs, u_rhs))
+
+#Full Navier Stokes 
+def navier_stokes_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, temperature_func, 
+                                                   eta_func, kappa_func):
+    rho_vals, u_vals, s_vals = state_vars_stack 
+    rho = eval(rho_vals) 
+    u = eval(u_vals) 
+    s = eval(s_vals) 
+
+    rho_pderiv_x = pderiv_x(rho_vals) 
+    u_pderiv_x = pderiv_x(u_vals) 
+    u_pderiv_xx = pderiv_xx(u_vals) 
+    s_pderiv_x = pderiv_x(s_vals)
+
+    pressure_vals = pressure_func(state_vars_stack)
+    P_pderiv_x = pderiv_x(pressure_vals)
+
+    temperature_vals = temperature_func(state_vars_stack)
+    T = eval(temperature_vals) 
+    T_pderiv_x = pderiv_x(temperature_vals) 
+    T_pderiv_xx = pderiv_xx(temperature_vals)
+
+    eta_vals = eta_func(state_vars_stack) 
+    eta = eval(eta_vals) 
+    eta_pderiv_x = pderiv_x(eta_vals) 
+
+    kappa_vals = kappa_func(state_vars_stack) 
+    kappa = eval(kappa_vals) 
+    kappa_pderiv_x = pderiv_x(kappa_vals) 
+
+    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
+    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
+                                                          eta_pderiv_x, P_pderiv_x)
+    s_rhs = entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, 
+                                     T_pderiv_x, T_pderiv_xx)
+    
+    return np.stack((rho_rhs, u_rhs, s_rhs))
+
+
+"""Given input state vars, calculate the total energy. 
+
+Params: 
+    state_vars_stack: An ND array of shape (k, ..., N), with k >= 2. The first axis is assumed to encode the state variables
+        (rho, u, ...), and the last encodes the 1D position axis - any other axes, if present, are broadcast over. 
+
+    epsilon_func: A function epsilon_func(state_vars) which takes as input the (k, ...) state vars ND array and returns 
+        the (normalized) energy per unit mass, according to the normalization: 
+
+        epsilon' = epsilon / c_0^2
+
+        If more axes than the first are present, they are broadcast over.
+
+    x_diff: Default 1.0. If specified, the x-difference (in sim units) between adjacent points along the last axis of 
+        state_vars_stack. Used as input to np.trapz.
+"""
+def get_hydro_total_energy(state_vars_stack, epsilon_func, x_diff = 1.0): 
+    rho, u, *_ = state_vars_stack 
+    epsilon = epsilon_func(state_vars_stack) 
+    integrand = 0.5 * rho * np.square(u) + rho * epsilon
+    return np.trapz(integrand, dx = x_diff, axis = -1)
