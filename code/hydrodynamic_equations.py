@@ -320,7 +320,6 @@ def navier_stokes_equations_generic_solver_wrapped(state_vars_stack, eval, pderi
     rho_vals, u_vals, s_vals = state_vars_stack 
     rho = eval(rho_vals) 
     u = eval(u_vals) 
-    s = eval(s_vals) 
 
     rho_pderiv_x = pderiv_x(rho_vals) 
     u_pderiv_x = pderiv_x(u_vals) 
@@ -351,6 +350,46 @@ def navier_stokes_equations_generic_solver_wrapped(state_vars_stack, eval, pderi
     
     return np.stack((rho_rhs, u_rhs, s_rhs))
 
+#NOTE: V_func is defined such that dV/dx = a is the body acceleration experienced by a test mass, 
+    #and is assumed to have call signature V(t, x)
+def navier_stokes_equations_generic_ext_force_solver_wrapped(t, x, state_vars_stack, eval, pderiv_x, pderiv_xx, 
+                                                             pressure_func, temperature_func, eta_func, kappa_func, 
+                                                             V_func):
+    rho_vals, u_vals, s_vals = state_vars_stack
+    rho = eval(rho_vals)
+    u = eval(u_vals)
+
+    rho_pderiv_x = pderiv_x(rho_vals)
+    u_pderiv_x = pderiv_x(u_vals)
+    u_pderiv_xx = pderiv_xx(u_vals)
+    s_pderiv_x = pderiv_x(s_vals)
+
+    pressure_vals = pressure_func(state_vars_stack)
+    P_pderiv_x = pderiv_x(pressure_vals)
+
+    temperature_vals = temperature_func(state_vars_stack)
+    T = eval(temperature_vals)
+    T_pderiv_x = pderiv_x(temperature_vals)
+    T_pderiv_xx = pderiv_xx(temperature_vals)
+
+    eta_vals = eta_func(state_vars_stack)
+    eta = eval(eta_vals)
+    eta_pderiv_x = pderiv_x(eta_vals)
+
+    kappa_vals = kappa_func(state_vars_stack)
+    kappa = eval(kappa_vals)
+    kappa_pderiv_x = pderiv_x(kappa_vals)
+
+    V = V_func(t, x)
+    V_pderiv_x = pderiv_x(V)
+
+    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
+    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
+                                                          eta_pderiv_x, P_pderiv_x) + V_pderiv_x
+    s_rhs = entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, 
+                                     T_pderiv_x, T_pderiv_xx)
+    
+    return np.stack((rho_rhs, u_rhs, s_rhs))
 
 """Given input state vars, calculate the total energy. 
 
