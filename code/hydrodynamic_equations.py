@@ -385,7 +385,7 @@ def navier_stokes_equations_generic_ext_force_solver_wrapped(t, x, state_vars_st
 
     rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
     u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
-                                                          eta_pderiv_x, P_pderiv_x) + V_pderiv_x
+                                                          eta_pderiv_x, P_pderiv_x) - V_pderiv_x
     s_rhs = entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, 
                                      T_pderiv_x, T_pderiv_xx)
     

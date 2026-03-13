@@ -103,9 +103,13 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
         if not explicit_eq:
             state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
         else:
-            state_update = stepper(t, x_vals, wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
+            #Pass a time stack to accommodate higher-order temporal methods
+            t_stack = t - t_diff * np.arange(method_time_order)
+            #Reshape to broadcast against x correctly
+            t_stack = np.expand_dims(t_stack, axis = -1)
+            state_update = stepper(t_stack, x_vals, wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
 
-        #Impose boundary function at endpoints
+        #Impose boundary function at (x) endpoints
         if not boundary_func is None:
             state_update[:, 0] = boundary_func(state_update[:, 0])
             state_update[:, -1] = boundary_func(state_update[:, -1])
