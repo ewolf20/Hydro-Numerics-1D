@@ -43,8 +43,12 @@ Parameters:
     boundary_func(state_vars) at the endpoints. The call signature of boundary_func should be to take in 
     and return a shape (k,) array, representing the values of the individual state vars at the endpoints. 
     The function uses the values of the state vars returned by the numerical scheme and imposes the boundary 
-    condition on the returned state vars. For instance, the booundary condition u = 0 is imposed as: 
+    condition on the returned state vars. For instance, the boundary condition u = 0 is imposed as: 
         f([rho, u, s]) = [rho, 0, s]
+
+    boundary_func_left, '_right: If these are not None, they specify individual boundary functions that 
+        are applied only to the left and right boundaries, respectively. If either of these is None,
+        they default to boundary_func. 
 
     output_increment: The number of steps to increment between output states + times of the system. If 
     None, output_increment will be chosen so that approximately 100 steps are output. 
@@ -64,9 +68,16 @@ Parameters:
 """
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
                     deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, boundary_func = None, 
+                    boundary_func_left = None, boundary_func_right = None,
                     output_increment = None, print_progress = False, check_finite = True):
+    
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff, explicit_eq)
     equation_fin_diff_funcs = method_fin_diff_funcs[:deriv_order + 1]
+
+    if boundary_func_left is None: 
+        boundary_func_left = boundary_func 
+    if boundary_func_right is None: 
+        boundary_func_right = boundary_func
 
     if output_increment is None:
         output_increment = t_steps // 100
@@ -109,10 +120,12 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
             t_stack = np.expand_dims(t_stack, axis = -1)
             state_update = stepper(t_stack, x_vals, wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
 
-        #Impose boundary function at (x) endpoints
-        if not boundary_func is None:
-            state_update[:, 0] = boundary_func(state_update[:, 0])
-            state_update[:, -1] = boundary_func(state_update[:, -1])
+        #Impose boundary functions at x endpoints
+        if not boundary_func_left is None:
+            state_update[:, 0] = boundary_func_left(state_update[:, 0])
+
+        if not boundary_func_right is None:
+            state_update[:, -1] = boundary_func_right(state_update[:, -1])
 
         if check_finite and not np.all(np.isfinite(state_update)):
             #If an infinity happened, return the last non-infinite step we have 
