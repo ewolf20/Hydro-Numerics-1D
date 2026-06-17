@@ -122,10 +122,16 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
         #Impose boundary functions at x endpoints
         if not boundary_func_left is None:
-            state_update[:, 0] = boundary_func_left(state_update[:, 0])
+            if explicit_eq:
+                state_update[:, 0] = boundary_func_left(t, state_update[:, 0])
+            else:
+                state_update[:, 0] = boundary_func_left(state_update[:, 0])
 
         if not boundary_func_right is None:
-            state_update[:, -1] = boundary_func_right(state_update[:, -1])
+            if explicit_eq:
+                state_update[:, -1] = boundary_func_right(t, state_update[:, -1])
+            else:
+                state_update[:, -1] = boundary_func_right(state_update[:, -1])
 
         if check_finite and not np.all(np.isfinite(state_update)):
             #If an infinity happened, return the last non-infinite step we have 
