@@ -2,15 +2,15 @@ import numpy as np
 
 """
 The functions in this file represent the differential equations of interest which are to be solved. 
-There are two types of functions here for external calling: *_equation() and *_solver_wrapped().
+There are three types of functions here for external calling: *_equation(),  *_solver_wrapped(), and *_factory().
 
-Both functions encode the RHS of hydrodynamic equations which have been arranged in the form: 
+The first two types of function encode the RHS of hydrodynamic equations which have been arranged in the form: 
 
 partial A/partial t = ... 
 
-Where the right hand side contains at most derivatives with respect to x. 
+Where the right hand side contains no derivatives with respect to t. 
 
-*_equation() functions are meant to be human-readable, and encode a single equation, e.g. continuity. 
+*_equation() (or *_term()) functions are meant to be human-readable, and encode a single equation, e.g. continuity. 
 
     They have the calling signature f(*expanded_vars, *params), where:
         *expanded_vars: Array-likes representing the values of  
@@ -23,10 +23,9 @@ Where the right hand side contains at most derivatives with respect to x.
     the RHS of the relevant equation broadcast over any present axes (e.g. spatial)
 
     
-*_solver_wrapped functions are meant to be passed to the differential equation solver. They encode a 
-system of equations, e.g. the full Euler equations. 
+*_solver_wrapped functions are meant to be passed to the differential equation solver, and are not as easily readable.
 
-    They have calling signature f(state_vars_stack, *fin_diff_funcs, *params). 
+    They have calling signature f(state_vars_stack, *fin_diff_funcs) or f(state_vars_stack, *fin_diff_funcs)
         
         state_vars_stack: A 3D ND array of shape (k, l, N). 
             The first dimension encodes the different state variables - for 1D hydrodynamics, the quantities rho, u, and (optionally) s. 
@@ -44,94 +43,194 @@ system of equations, e.g. the full Euler equations.
                 fin_diff_func(vars[i]); that is, it takes the shape (l, N) for a given state variable.
                 It should have a return of shape (N).
 
-            Remark: For some stepper-wrapped functions, it will be highly natural to pass functions unrelated 
-            to derivative taking - e.g. a function mapping the state variables to pressure. These should not 
-            be passed with fin_diff_funcs, but instead params, below. 
 
-        *params: Any additional scalar parameters or functions necessary for the equation, e.g. tunable viscosity
-        as above, or a pressure equation of state.
 
-            Remark: While *params may be present here, they must be defined in a closure before passing to the 
-            solver, which will only accept functions of the form *_solver_wrapped(vars, *fin_diff_funcs). By convention, 
-            any functions passed here should broadcast over all axes of state_vars besides the first.
+    These functions return an ND array of shape N), representing the RHS of the equation for the relevant state variable, broadcast over the 
+    spatial axis. 
 
-    These functions return a 2-dimensional ND array of shape (k, N), representing the RHS of the system of equations, 
-    broadcast over state variables and spatial axis (but not time). 
+    Note that the solver-wrapped functions do not support other parameters - where these must be specified, they should be inserted via closures.
 """
 
-#*_EQUATION()
-
-#GENERIC
+#CONTINUITY
 
 def continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x):
     return -1.0 * (u * rho_pderiv_x + rho * u_pderiv_x)
 
-#INVISCID EQUATIONS
+def continuity_equation_solver_wrapped(state_vars, *fin_diff_funcs):
+    rho_vals, u_vals, *_ = state_vars 
+    eval, pderiv_x, *_ = fin_diff_funcs
+    rho = eval(rho_vals)
+    u = eval(u_vals) 
+    rho_pderiv_x = pderiv_x(rho_vals) 
+    u_pderiv_x = pderiv_x(u_vals)
+    return continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
 
-def momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x):
-    return -1.0 * (u * u_pderiv_x + (1.0 / rho) * P_pderiv_x)
 
+#MOMENTUM
 
-def momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c):
-    return -1.0 * (u * u_pderiv_x + (1.0 / rho) * np.square(c) * rho_pderiv_x)
+#Advective term
+def _momentum_advective_term(u, u_pderiv_x):
+    return -1.0 * (u * u_pderiv_x)
 
-def momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma):
-    return -1.0 * (u * u_pderiv_x + np.power(rho, gamma - 2) * rho_pderiv_x)
+#Pressure terms
 
-#VISCOUS EQUATIONS
+def _momentum_generic_pressure_term(rho, P_pderiv_x):
+    return -1.0 * (1.0 / rho) * P_pderiv_x
 
-#NOTE: Generically, there are two relevant viscosities in the hydrodynamic equations. However, for 1D flow, 
-#only a certain linear combination of them is relevant: 4/3 eta + zeta. We will then condense these into one 
-#quantity, which we call eta but is actually eta + 3/4 zeta. 
+def _momentum_isentropic_pressure_term(rho, rho_pderiv_x, c):
+    return -1.0 * (1.0 / rho) * np.square(c) * rho_pderiv_x
 
-#CONSTANT VISCOSITY
+def _momentum_isentropic_polytropic_pressure_term(rho, rho_pderiv_x, gamma): 
+    return -1.0 * np.power(rho, gamma - 2) * rho_pderiv_x
 
-def _const_viscosity_term(rho, u_pderiv_xx, eta):
+#Viscous terms 
+def _momentum_constant_eta_viscous_term(rho, u_pderiv_xx, eta): 
     return 1.0 / (rho) * (4/3 * eta) * u_pderiv_xx
 
-def momentum_euler_const_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, P_pderiv_x, eta):
-    return momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x) + _const_viscosity_term(rho, u_pderiv_xx, eta)
+def _momentum_constant_nu_viscous_term(rho, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, nu): 
+    return 4/3 * (nu * u_pderiv_xx + 1.0 / rho * nu * rho_pderiv_x * u_pderiv_x)
 
-#Contradiction ahoy - we ignore the entropic effects of viscosity and only model the momentum damping
-def momentum_euler_const_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, c, eta):
-    return momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c) + _const_viscosity_term(rho, u_pderiv_xx, eta)
-
-
-def momentum_euler_const_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, gamma, eta):
-    return (momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma) + 
-            _const_viscosity_term(rho, u_pderiv_xx, eta))
+def _momentum_arb_eta_viscous_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x): 
+    return 1.0 / rho * 4/3 * (eta * u_pderiv_xx + eta_pderiv_x * u_pderiv_x)
 
 
-#VARIABLE VISCOSITY 
+#Function factory for the momentum equation. Note: External forces are not included at this stage. 
+def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", pressure_func = None, c_func = None, gamma_val = None, 
+                                             viscous_term_type = "inviscid", eta_func = None, eta_val = None, nu_val = None):
+    ALLOWED_PRESSURE_TERM_TYPES = ["arbitrary", "isentropic", "polytropic"]
+    if not pressure_term_type in ALLOWED_PRESSURE_TERM_TYPES:
+        raise ValueError("Unrecognized pressure term type. Allowed values are: {0}".format(ALLOWED_PRESSURE_TERM_TYPES))
+    
+    ALLOWED_VISCOUS_TERM_TYPES = ["inviscid", "const_eta", "const_nu", "arbitrary"]
+    if not viscous_term_type in ALLOWED_VISCOUS_TERM_TYPES:
+        raise ValueError("Unrecognized viscous term type. Allowed values are: {0}".format(ALLOWED_VISCOUS_TERM_TYPES))
+    
 
-#Here, no longer assume that the viscosity is constant. This makes the form of the viscous term more annoying.
-#We manually expand the derivative partial_x (4/3 eta partial_x u) = 4/3 (partial_x eta partial_x u + eta partial_xx u)
+    def momentum_equation_solver_wrapped(state_vars, *fin_diff_funcs):
+        rho_vals, u_vals, *_ = state_vars
+        #Pderiv_xx is only used in viscous terms 
+        if viscous_term_type == "inviscid":
+            eval, pderiv_x, *_ = fin_diff_funcs 
+        else:
+            eval, pderiv_x, pderiv_xx, *_ = fin_diff_funcs
+        
+        #Advective term 
+        u = eval(u_vals) 
+        u_pderiv_x = pderiv_x(u_vals)
+        advective_term = _momentum_advective_term(u, u_pderiv_x) 
 
-def _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x):
-    return 4 / (3 * rho) * (u_pderiv_x * eta_pderiv_x + eta * u_pderiv_xx)
+        #Pressure term 
+        rho = eval(rho_vals)
+        #Not always necessary, but often; we predefine it to not waste evaluations
+        rho_pderiv_x = pderiv_x(rho_vals)
+        if pressure_term_type == "arbitrary":
+            P_vals = pressure_func(state_vars) 
+            P_pderiv_x = pderiv_x(P_vals)
+            pressure_term = _momentum_generic_pressure_term(rho, P_pderiv_x)
+        elif pressure_term_type == "isentropic":
+            c_vals = c_func(state_vars) 
+            c = eval(c_vals) 
+            pressure_term = _momentum_isentropic_pressure_term(rho, rho_pderiv_x, c)
+        elif pressure_term_type == "polytropic":
+            pressure_term = _momentum_isentropic_polytropic_pressure_term(rho, rho_pderiv_x, gamma_val)
 
-def momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, P_pderiv_x):
-    return momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x) + _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, 
-                                                                                    eta, eta_pderiv_x)
 
-def momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, c):
-    return momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c) + _var_viscosity_term(rho, u_pderiv_x, u_pderiv_xx, eta, 
-                                                                                                         eta_pderiv_x)
+        #Viscous Term
+        if viscous_term_type == "inviscid":
+            viscous_term = 0.0 
+        elif viscous_term_type == "const_eta":
+            u_pderiv_xx = pderiv_xx(u_vals)
+            viscous_term = _momentum_constant_eta_viscous_term(rho, u_pderiv_xx, eta_val)
+        elif viscous_term_type == "const_nu":
+            u_pderiv_xx = pderiv_xx(u_vals)
+            viscous_term = _momentum_constant_nu_viscous_term(rho, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, nu_val)
+        elif viscous_term_type == "arbitrary":
+            u_pderiv_xx = pderiv_xx(u_vals)
+            eta_vals = eta_func(state_vars) 
+            eta = eval(eta_vals) 
+            eta_pderiv_x = pderiv_x(eta_vals)
+            viscous_term = _momentum_arb_eta_viscous_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x)
 
-def momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, gamma): 
-    return momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma) + _var_viscosity_term(
-        rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x)
+        return advective_term + pressure_term + viscous_term 
 
+    return momentum_equation_solver_wrapped
 
 #ENTROPY
-#We include a single equation, giving the evolution of the entropy
 
-def entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, T_pderiv_x, T_pderiv_xx):
-    advective_term = -u * s_pderiv_x 
-    dissipative_part_visc = 4/3 * eta * np.square(u_pderiv_x) 
-    dissipative_part_therm = kappa * T_pderiv_xx + kappa_pderiv_x * T_pderiv_x
-    dissipative_term = 1.0 / (rho * T) * (dissipative_part_visc + dissipative_part_therm)
-    return advective_term + dissipative_term
+def _entropy_advective_term(u, s_pderiv_x):
+    return -u * s_pderiv_x
+
+def _entropy_dissipative_visc_term(rho, T, u_pderiv_x, eta):
+    return 1.0 / (rho * T) * 4/3 * eta * np.square(u_pderiv_x)
+
+def _entropy_dissipative_thermal_term_const_kappa(rho, T, T_pderiv_xx, kappa):
+    return 1.0 / (rho * T) * kappa * T_pderiv_xx 
+
+def _entropy_dissipative_thermal_term_const_kappa_prime(rho, T, rho_pderiv_x, T_pderiv_x, T_pderiv_xx, kappa_prime):
+    return kappa_prime * (1.0 / T * T_pderiv_xx + 1.0 / (rho * T) * rho_pderiv_x * T_pderiv_x)
+
+def _entropy_dissipative_thermal_term_arb_kappa(rho, T, T_pderiv_x, T_pderiv_xx, kappa, kappa_pderiv_x):
+    return 1.0 / (rho * T) * (kappa_pderiv_x * T_pderiv_x + kappa * T_pderiv_xx)
+
+
+def entropy_equation_solver_wrapped_factory(T_func,
+                                             viscous_term_type = "arbitrary", eta_val = None, nu_val = None, eta_func = None,
+                                             thermal_term_type = "arbitrary", kappa_val = None, kappa_prime_val = None, kappa_func = None):
+
+    ALLOWED_VISCOUS_TERM_TYPES = ["arbitrary", "const_eta", "const_nu", "inviscid"]
+    if not viscous_term_type in ALLOWED_VISCOUS_TERM_TYPES:
+        raise ValueError("Unrecognized viscous term type. Allowed values are: {0}".format(ALLOWED_VISCOUS_TERM_TYPES))
+    
+    ALLOWED_THERMAL_TERM_TYPES = ["arbitrary", "const_kappa", "const_kappa_prime", "none"]
+    if not thermal_term_type in ALLOWED_THERMAL_TERM_TYPES:
+        raise ValueError("Unrecognized thermal term type. Allowed values are: {0}".format(ALLOWED_THERMAL_TERM_TYPES))
+
+
+    def entropy_equation_solver_wrapped(state_vars, *fin_diff_funcs):
+        rho_vals, u_vals, s_vals = state_vars 
+        eval, pderiv_x, pderiv_xx = fin_diff_funcs
+        u = eval(u_vals) 
+        s_pderiv_x = pderiv_x(s_vals) 
+        advective_term = _entropy_advective_term(u, s_pderiv_x) 
+
+        T_vals = T_func(state_vars) 
+        T = eval(T_vals) 
+        rho = eval(rho_vals)
+
+        if viscous_term_type == "inviscid":
+            dissipative_term_viscous = 0.0 
+        else:
+            u_pderiv_x = pderiv_x(u_vals)
+            if viscous_term_type == "arbitrary":
+                eta_vals = eta_func(state_vars)
+                eta = eval(eta_vals)
+            elif viscous_term_type == "const_eta":
+                eta = eta_val
+            elif viscous_term_type == "const_nu":
+                eta_vals = rho_vals * nu_val 
+                eta = eval(eta_vals) 
+            dissipative_term_viscous = _entropy_dissipative_visc_term(rho, T, u_pderiv_x, eta)
+
+        if thermal_term_type == "none":
+            dissipative_term_thermal = 0.0
+        elif thermal_term_type == "const_kappa":
+            T_pderiv_xx = pderiv_xx(T_vals)
+            dissipative_term_thermal = _entropy_dissipative_thermal_term_const_kappa(rho, T, T_pderiv_xx, kappa_val)
+        elif thermal_term_type == "const_kappa_prime":
+            rho_pderiv_x = pderiv_x(rho_vals) 
+            T_pderiv_x = pderiv_x(T_vals)
+            T_pderiv_xx = pderiv_xx(T_vals)
+            dissipative_term_thermal = _entropy_dissipative_thermal_term_const_kappa_prime(rho, T, rho_pderiv_x, T_pderiv_x, 
+                                                                                           T_pderiv_xx, kappa_prime_val)
+        elif thermal_term_type == "arbitrary": 
+            kappa_vals = kappa_func(state_vars) 
+            kappa = eval(kappa_vals) 
+            kappa_pderiv_x = pderiv_x(kappa_vals)
+            dissipative_term_thermal = _entropy_dissipative_thermal_term_arb_kappa(rho, T, T_pderiv_x, T_pderiv_xx, kappa, kappa_pderiv_x)
+
+        return advective_term + dissipative_term_viscous + dissipative_term_thermal
+
+    return entropy_equation_solver_wrapped
 
 
 #PURELY DIFFUSIVE DYNAMICS
@@ -141,255 +240,45 @@ def diffusive_equation(A_pderiv_xx, diffusivity):
     return diffusivity * A_pderiv_xx
 
 
-#STEPPER_WRAPPED 
-
-#INVISCID
-
-def euler_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pressure_func):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-
-    pressures = pressure_func(state_vars_stack) 
-    P_pderiv_x = pderiv_x(pressures) 
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x) 
-    u_rhs = momentum_euler_generic_equation(rho, u, u_pderiv_x, P_pderiv_x)
-
-    return np.stack((rho_rhs, u_rhs))
-
-def euler_equations_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, c_func):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-
-    c_vals = c_func(state_vars_stack) 
-    c = eval(c_vals) 
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, c)
-
-    return np.stack((rho_rhs, u_rhs))
-
-
-def euler_equations_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, pderiv_x, gamma): 
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, gamma)
-
-    return np.stack((rho_rhs, u_rhs))
-
-
-#VISCOUS EULER 
-
-#Const viscosity
-
-def euler_equations_const_viscosity_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, 
-                                           eta):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-
-    pressures = pressure_func(state_vars_stack) 
-    P_pderiv_x = pderiv_x(pressures) 
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x) 
-    u_rhs = momentum_euler_const_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, 
-                                                            P_pderiv_x, eta)
-
-    return np.stack((rho_rhs, u_rhs))
-
-
-def euler_equations_const_viscosity_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx,
-                                                              c_func, eta):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-
-    c_vals = c_func(state_vars_stack)
-    c = eval(c_vals)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_const_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, 
-                                                               u_pderiv_xx, c, eta)
-
-    return np.stack((rho_rhs, u_rhs))
-
-
-def euler_equations_const_viscosity_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, 
-                                                            pderiv_x, pderiv_xx, gamma, eta):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_const_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, 
-                                                    u_pderiv_x, u_pderiv_xx, gamma, eta)
-
-    return np.stack((rho_rhs, u_rhs))
+#Wrap functions into a complete system, optionally adding an externally-applied acceleration.
+#If specified, ext_accel_func has call signature (t, x), where t and x are assumed to be able to broadcast together to a (l, N) array. 
+def hydro_system_function_factory(continuity_solver_wrapped, momentum_solver_wrapped, entropy_solver_wrapped = None, 
+                                  ext_accel_type = "none", ext_accel_val = None, ext_accel_func = None):
     
-
-#Variable viscosity
-
-def euler_equations_var_viscosity_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, 
-                                           eta_func):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals)
-    u = eval(u_vals)
-    rho_pderiv_x = pderiv_x(rho_vals)
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-
-    eta_vals = eta_func(state_vars_stack)
-    eta = eval(eta_vals)
-    eta_pderiv_x = pderiv_x(eta_vals)
-
-    pressures = pressure_func(state_vars_stack)
-    P_pderiv_x = pderiv_x(pressures)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
-                                                          eta_pderiv_x, P_pderiv_x)
-
-    return np.stack((rho_rhs, u_rhs))
-
-
-def euler_equations_var_viscosity_isentropic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx,
-                                                              c_func, eta_func):
-    rho_vals, u_vals = state_vars_stack
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-
-    eta_vals = eta_func(state_vars_stack)
-    eta = eval(eta_vals)
-    eta_pderiv_x = pderiv_x(eta_vals)
-
-    c_vals = c_func(state_vars_stack)
-    c = eval(c_vals)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_isentropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, 
-                                                             eta, eta_pderiv_x, c)
-
-    return np.stack((rho_rhs, u_rhs))
-
-def euler_equations_var_viscosity_isentropic_polytropic_solver_wrapped(state_vars_stack, eval, 
-                                                                       pderiv_x, pderiv_xx, gamma, eta_func):
+    ALLOWED_EXT_ACCEL_TYPES = ["none", "constant_accel", "arbitrary"]
+    if not ext_accel_type in ALLOWED_EXT_ACCEL_TYPES:
+        raise ValueError("Unrecognized ext_accel_type; allowed values are: {0}".format(ALLOWED_EXT_ACCEL_TYPES))
     
-    rho_vals, u_vals = state_vars_stack 
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals) 
-    u_pderiv_xx = pderiv_xx(u_vals)
+    def _hydro_system_function_no_force(state_vars, *fin_diff_funcs):
+        continuity_rhs = continuity_solver_wrapped(state_vars, *fin_diff_funcs)
+        momentum_rhs_no_force = momentum_solver_wrapped(state_vars, *fin_diff_funcs)
+        if entropy_solver_wrapped is None: 
+            return np.stack((continuity_rhs, momentum_rhs_no_force))
+        else:
+            entropy_rhs = entropy_solver_wrapped(state_vars, *fin_diff_funcs)
+            return np.stack((continuity_rhs, momentum_rhs_no_force, entropy_rhs))
 
-    eta_vals = eta_func(state_vars_stack) 
-    eta = eval(eta_vals)
-    eta_pderiv_x = pderiv_x(eta_vals)
+    #Add the external acceleration; do it this way because it changes the signature... 
 
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_isentropic_polytropic_equation(rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, 
-                                                                        eta, eta_pderiv_x, gamma)
-    
-    return np.stack((rho_rhs, u_rhs))
+    if ext_accel_type == "arbitrary":
+        def hydro_system_function(t, x, state_vars, *fin_diff_funcs):
+            eval, *_ = fin_diff_funcs
+            rhs = _hydro_system_function_no_force(state_vars, *fin_diff_funcs) 
+            accel_vals = ext_accel_func(t, x)
+            accel = eval(accel_vals)
+            #Add the accel to the momentum equation only. 
+            rhs[1] += accel
+            return rhs
+    elif ext_accel_type == "constant_accel":
+        def hydro_system_function(state_vars, *fin_diff_funcs):
+            rhs = _hydro_system_function_no_force(state_vars, *fin_diff_funcs) 
+            rhs[1] += ext_accel_val
+            return rhs
+    elif ext_accel_type == "none":
+        def hydro_system_function(state_vars, *fin_diff_funcs):
+            return _hydro_system_function_no_force(state_vars, *fin_diff_funcs)
 
-#Full Navier Stokes 
-def navier_stokes_equations_generic_solver_wrapped(state_vars_stack, eval, pderiv_x, pderiv_xx, pressure_func, temperature_func, 
-                                                   eta_func, kappa_func):
-    rho_vals, u_vals, s_vals = state_vars_stack 
-    rho = eval(rho_vals) 
-    u = eval(u_vals) 
-
-    rho_pderiv_x = pderiv_x(rho_vals) 
-    u_pderiv_x = pderiv_x(u_vals) 
-    u_pderiv_xx = pderiv_xx(u_vals) 
-    s_pderiv_x = pderiv_x(s_vals)
-
-    pressure_vals = pressure_func(state_vars_stack)
-    P_pderiv_x = pderiv_x(pressure_vals)
-
-    temperature_vals = temperature_func(state_vars_stack)
-    T = eval(temperature_vals) 
-    T_pderiv_x = pderiv_x(temperature_vals) 
-    T_pderiv_xx = pderiv_xx(temperature_vals)
-
-    eta_vals = eta_func(state_vars_stack) 
-    eta = eval(eta_vals) 
-    eta_pderiv_x = pderiv_x(eta_vals) 
-
-    kappa_vals = kappa_func(state_vars_stack) 
-    kappa = eval(kappa_vals) 
-    kappa_pderiv_x = pderiv_x(kappa_vals) 
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
-                                                          eta_pderiv_x, P_pderiv_x)
-    s_rhs = entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, 
-                                     T_pderiv_x, T_pderiv_xx)
-    
-    return np.stack((rho_rhs, u_rhs, s_rhs))
-
-#NOTE: V_func is defined such that dV/dx = a is the body acceleration experienced by a test mass, 
-    #and is assumed to have call signature V(t, x)
-def navier_stokes_equations_generic_ext_force_solver_wrapped(t, x, state_vars_stack, eval, pderiv_x, pderiv_xx, 
-                                                             pressure_func, temperature_func, eta_func, kappa_func, 
-                                                             V_func):
-    rho_vals, u_vals, s_vals = state_vars_stack
-    rho = eval(rho_vals)
-    u = eval(u_vals)
-
-    rho_pderiv_x = pderiv_x(rho_vals)
-    u_pderiv_x = pderiv_x(u_vals)
-    u_pderiv_xx = pderiv_xx(u_vals)
-    s_pderiv_x = pderiv_x(s_vals)
-
-    pressure_vals = pressure_func(state_vars_stack)
-    P_pderiv_x = pderiv_x(pressure_vals)
-
-    temperature_vals = temperature_func(state_vars_stack)
-    T = eval(temperature_vals)
-    T_pderiv_x = pderiv_x(temperature_vals)
-    T_pderiv_xx = pderiv_xx(temperature_vals)
-
-    eta_vals = eta_func(state_vars_stack)
-    eta = eval(eta_vals)
-    eta_pderiv_x = pderiv_x(eta_vals)
-
-    kappa_vals = kappa_func(state_vars_stack)
-    kappa = eval(kappa_vals)
-    kappa_pderiv_x = pderiv_x(kappa_vals)
-
-    V = V_func(t, x)
-    V_pderiv_x = pderiv_x(V)
-
-    rho_rhs = continuity_equation(rho, u, rho_pderiv_x, u_pderiv_x)
-    u_rhs = momentum_euler_var_viscosity_generic_equation(rho, u, u_pderiv_x, u_pderiv_xx, eta, 
-                                                          eta_pderiv_x, P_pderiv_x) - V_pderiv_x
-    s_rhs = entropy_generic_equation(rho, u, s_pderiv_x, u_pderiv_x, eta, kappa, kappa_pderiv_x, T, 
-                                     T_pderiv_x, T_pderiv_xx)
-    
-    return np.stack((rho_rhs, u_rhs, s_rhs))
+    return hydro_system_function
 
 """Given input state vars, calculate the total energy. 
 

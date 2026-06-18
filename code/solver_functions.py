@@ -68,7 +68,7 @@ Parameters:
 """
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
                     deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, boundary_func = None, 
-                    boundary_func_left = None, boundary_func_right = None,
+                    boundary_func_left = None, boundary_func_right = None, explicit_boundary = False,
                     output_increment = None, print_progress = False, check_finite = True):
     
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff, explicit_eq)
@@ -122,13 +122,13 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
         #Impose boundary functions at x endpoints
         if not boundary_func_left is None:
-            if explicit_eq:
+            if explicit_boundary:
                 state_update[:, 0] = boundary_func_left(t, state_update[:, 0])
             else:
                 state_update[:, 0] = boundary_func_left(state_update[:, 0])
 
         if not boundary_func_right is None:
-            if explicit_eq:
+            if explicit_boundary:
                 state_update[:, -1] = boundary_func_right(t, state_update[:, -1])
             else:
                 state_update[:, -1] = boundary_func_right(state_update[:, -1])

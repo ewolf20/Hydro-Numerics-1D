@@ -95,15 +95,19 @@ def test_solve_equations():
 
     initial_state_advective = np.stack((initial_rho, initial_velocity))
 
-    def gamma_specified_euler(state_vars_stack, eval, pderiv_x):
-        return hydrodynamic_equations.euler_equations_isentropic_polytropic_solver_wrapped(
-            state_vars_stack, eval, pderiv_x, euler_gamma
-        )
+    continuity_equation_solver_wrapped = hydrodynamic_equations.continuity_equation_solver_wrapped 
+    momentum_equation_solver_wrapped = hydrodynamic_equations.momentum_equation_solver_wrapped_factory(
+        pressure_term_type = "polytropic", gamma_val = euler_gamma
+    )
+
+    euler_hydro_system = hydrodynamic_equations.hydro_system_function_factory(
+        continuity_equation_solver_wrapped, momentum_equation_solver_wrapped
+    )
         
 
 
     times_leapfrog, state_vars_leapfrog = solver_functions.solve_equations(
-        gamma_specified_euler, 
+        euler_hydro_system, 
         initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps, 
         method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False)
 
@@ -147,14 +151,14 @@ def test_solve_equations():
     initial_state_unstable = np.stack((initial_rho_unstable, initial_velocity_unstable))
 
     times_leapfrog_unstable, state_vars_leapfrog_unstable = solver_functions.solve_equations(
-            gamma_specified_euler,
+            euler_hydro_system,
             initial_state_unstable, advective_xdiff_unstable, advective_tdiff_unstable, advective_num_steps_unstable, 
             method = "leapfrog", deriv_order = 1, check_finite = False)
     
     assert not np.all(np.isfinite(state_vars_leapfrog_unstable))
 
     success_checked, times_leapfrog_unstable_checked, state_vars_leapfrog_unstable_checked = solver_functions.solve_equations(
-            gamma_specified_euler,
+            euler_hydro_system,
             initial_state_unstable, advective_xdiff_unstable, advective_tdiff_unstable, advective_num_steps_unstable, 
             method = "leapfrog", deriv_order = 1, check_finite = True)
     
