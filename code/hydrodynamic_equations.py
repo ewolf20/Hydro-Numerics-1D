@@ -94,12 +94,12 @@ def _momentum_constant_nu_viscous_term(rho, rho_pderiv_x, u_pderiv_x, u_pderiv_x
     return 4/3 * (nu * u_pderiv_xx + 1.0 / rho * nu * rho_pderiv_x * u_pderiv_x)
 
 def _momentum_arb_eta_viscous_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x): 
-    1.0 / rho * 4/3 * (eta * u_pderiv_xx + eta_pderiv_x * u_pderiv_x)
+    return 1.0 / rho * 4/3 * (eta * u_pderiv_xx + eta_pderiv_x * u_pderiv_x)
 
 
 #Function factory for the momentum equation. Note: External forces are not included at this stage. 
 def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", pressure_func = None, c_func = None, gamma_val = None, 
-                                             viscous_term_type = "arbitrary", eta_func = None, eta_val = None, nu_val = None):
+                                             viscous_term_type = "inviscid", eta_func = None, eta_val = None, nu_val = None):
     ALLOWED_PRESSURE_TERM_TYPES = ["arbitrary", "isentropic", "polytropic"]
     if not pressure_term_type in ALLOWED_PRESSURE_TERM_TYPES:
         raise ValueError("Unrecognized pressure term type. Allowed values are: {0}".format(ALLOWED_PRESSURE_TERM_TYPES))
@@ -148,6 +148,7 @@ def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", p
             u_pderiv_xx = pderiv_xx(u_vals)
             viscous_term = _momentum_constant_nu_viscous_term(rho, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, nu_val)
         elif viscous_term_type == "arbitrary":
+            u_pderiv_xx = pderiv_xx(u_vals)
             eta_vals = eta_func(state_vars) 
             eta = eval(eta_vals) 
             eta_pderiv_x = pderiv_x(eta_vals)
@@ -156,7 +157,6 @@ def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", p
         return advective_term + pressure_term + viscous_term 
 
     return momentum_equation_solver_wrapped
-
 
 #ENTROPY
 
@@ -242,7 +242,6 @@ def entropy_equation_solver_wrapped_factory(T_func,
 def diffusive_equation(A_pderiv_xx, diffusivity):
     return diffusivity * A_pderiv_xx
 
-
 #Wrap functions into a complete system, optionally adding an externally-applied acceleration.
 #If specified, ext_accel_func has call signature (t, x), where t and x are assumed to be able to broadcast together to a (l, N) array. 
 
@@ -281,7 +280,6 @@ def hydro_system_function_factory(continuity_solver_wrapped, momentum_solver_wra
     elif ext_accel_type == "none":
         def hydro_system_function(state_vars, *fin_diff_funcs):
             return _hydro_system_function_no_force(state_vars, *fin_diff_funcs)
-
 
     return hydro_system_function
 
