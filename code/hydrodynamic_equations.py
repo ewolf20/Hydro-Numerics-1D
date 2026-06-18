@@ -10,7 +10,7 @@ partial A/partial t = ...
 
 Where the right hand side contains no derivatives with respect to t. 
 
-*_equation() functions are meant to be human-readable, and encode a single equation, e.g. continuity. 
+*_equation() (or *_term()) functions are meant to be human-readable, and encode a single equation, e.g. continuity. 
 
     They have the calling signature f(*expanded_vars, *params), where:
         *expanded_vars: Array-likes representing the values of  
@@ -25,7 +25,7 @@ Where the right hand side contains no derivatives with respect to t.
     
 *_solver_wrapped functions are meant to be passed to the differential equation solver, and are not as easily readable.
 
-    They have calling signature f(state_vars_stack, *fin_diff_funcs) or f(t, x, state_vars_stack, *fin_diff_funcs)
+    They have calling signature f(state_vars_stack, *fin_diff_funcs) or f(state_vars_stack, *fin_diff_funcs)
         
         state_vars_stack: A 3D ND array of shape (k, l, N). 
             The first dimension encodes the different state variables - for 1D hydrodynamics, the quantities rho, u, and (optionally) s. 
@@ -43,9 +43,6 @@ Where the right hand side contains no derivatives with respect to t.
                 fin_diff_func(vars[i]); that is, it takes the shape (l, N) for a given state variable.
                 It should have a return of shape (N).
 
-        t, x: Arrays encoding the times t and positions x at which the solver-wrapped functions are to be evaluated. Currently used only 
-        for situations where time- or position-dependent forces are applied. These must yield an array of shape (l, N) when broadcast against 
-        each other.  
 
 
     These functions return an ND array of shape N), representing the RHS of the equation for the relevant state variable, broadcast over the 
@@ -242,9 +239,9 @@ def entropy_equation_solver_wrapped_factory(T_func,
 def diffusive_equation(A_pderiv_xx, diffusivity):
     return diffusivity * A_pderiv_xx
 
+
 #Wrap functions into a complete system, optionally adding an externally-applied acceleration.
 #If specified, ext_accel_func has call signature (t, x), where t and x are assumed to be able to broadcast together to a (l, N) array. 
-
 def hydro_system_function_factory(continuity_solver_wrapped, momentum_solver_wrapped, entropy_solver_wrapped = None, 
                                   ext_accel_type = "none", ext_accel_val = None, ext_accel_func = None):
     
