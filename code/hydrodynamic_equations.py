@@ -97,17 +97,6 @@ def _momentum_arb_eta_viscous_term(rho, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv
     1.0 / rho * 4/3 * (eta * u_pderiv_xx + eta_pderiv_x * u_pderiv_x)
 
 
-#External force terms
-
-#Uniform acceleration
-def _momentum_external_force_term_uniform_accel(a): 
-    return a
-
-#Arbitrary potential
-def _momentum_external_force_term_arb_potential(V_pderiv_x):
-    return -V_pderiv_x
-
-
 #Function factory for the momentum equation. Note: External forces are not included at this stage. 
 def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", pressure_func = None, c_func = None, gamma_val = None, 
                                              viscous_term_type = "arbitrary", eta_func = None, eta_val = None, nu_val = None):
@@ -116,7 +105,7 @@ def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", p
         raise ValueError("Unrecognized pressure term type. Allowed values are: {0}".format(ALLOWED_PRESSURE_TERM_TYPES))
     
     ALLOWED_VISCOUS_TERM_TYPES = ["inviscid", "const_eta", "const_nu", "arbitrary"]
-    if not pressure_term_type in ALLOWED_VISCOUS_TERM_TYPES:
+    if not viscous_term_type in ALLOWED_VISCOUS_TERM_TYPES:
         raise ValueError("Unrecognized viscous term type. Allowed values are: {0}".format(ALLOWED_VISCOUS_TERM_TYPES))
     
 
@@ -137,7 +126,7 @@ def momentum_equation_solver_wrapped_factory(pressure_term_type = "arbitrary", p
         rho = eval(rho_vals)
         #Not always necessary, but often; we predefine it to not waste evaluations
         rho_pderiv_x = pderiv_x(rho_vals)
-        if pressure_term_type == "arbitrary:":
+        if pressure_term_type == "arbitrary":
             P_vals = pressure_func(state_vars) 
             P_pderiv_x = pderiv_x(P_vals)
             pressure_term = _momentum_generic_pressure_term(rho, P_pderiv_x)
@@ -233,6 +222,7 @@ def entropy_equation_solver_wrapped_factory(T_func,
         elif thermal_term_type == "const_kappa_prime":
             rho_pderiv_x = pderiv_x(rho_vals) 
             T_pderiv_x = pderiv_x(T_vals)
+            T_pderiv_xx = pderiv_xx(T_vals)
             dissipative_term_thermal = _entropy_dissipative_thermal_term_const_kappa_prime(rho, T, rho_pderiv_x, T_pderiv_x, 
                                                                                            T_pderiv_xx, kappa_prime_val)
         elif thermal_term_type == "arbitrary": 
@@ -276,10 +266,12 @@ def hydro_system_function_factory(continuity_solver_wrapped, momentum_solver_wra
 
     if ext_accel_type == "arbitrary":
         def hydro_system_function(t, x, state_vars, *fin_diff_funcs):
+            eval, *_ = fin_diff_funcs
             rhs = _hydro_system_function_no_force(state_vars, *fin_diff_funcs) 
-            accel = ext_accel_func(t, x)
+            accel_vals = ext_accel_func(t, x)
+            accel = eval(accel_vals)
             #Add the accel to the momentum equation only. 
-            rhs[1] += accel 
+            rhs[1] += accel
             return rhs
     elif ext_accel_type == "constant_accel":
         def hydro_system_function(state_vars, *fin_diff_funcs):
