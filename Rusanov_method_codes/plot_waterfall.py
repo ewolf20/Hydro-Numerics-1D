@@ -353,6 +353,17 @@ def plot_waterfall(
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
+def get_cmap(name="viridis"):
+    try:
+        import matplotlib as mpl
+        return mpl.colormaps[name]
+    except (AttributeError, ImportError):
+        try:
+            import matplotlib.pyplot as plt
+            return plt.get_cmap(name)
+        except AttributeError:
+            from matplotlib import cm
+            return cm.get_cmap(name)
 
 def main() -> None:
     args = parse_args()
@@ -395,7 +406,7 @@ def main() -> None:
         snapshot_cache = build_snapshot_cache(df, times)
         xp_by_time = build_piston_positions(snapshot_cache, times, args)
 
-        cmap = cm.get_cmap("viridis")
+        cmap = get_cmap("viridis")
         if len(times) == 1:
             t0 = float(times[0])
             norm = colors.Normalize(vmin=t0 - 1.0, vmax=t0 + 1.0)
