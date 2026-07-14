@@ -46,12 +46,15 @@ def polytropic_piston_velocity_profile(t, x, gamma = UNITARY_GAMMA):
     _validate_piston_t(t, gamma)
 
     #Analytic formulas are simplest in the free-falling frame, where the piston is accelerating
+    #and the gas is 
     x_free_fall = x + 0.5 * np.square(t)
-    return np.where(
+    velocity_free_fall =  np.where(
         x_free_fall < t, 
         _v_left(t, x_free_fall, gamma), 
         0
     )
+    velocity = velocity_free_fall - t
+    return velocity
 
 def polytropic_piston_density_profile(t, x, gamma = UNITARY_GAMMA): 
     _validate_piston_t(t, gamma)
