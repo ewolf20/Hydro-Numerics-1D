@@ -16,11 +16,11 @@ REFERENCE_X_SAMPS = 1000
 REFERENCE_RANGE_LOWER = -0.8
 REFERENCE_RANGE_UPPER = 2.8
 x_range = np.linspace(REFERENCE_RANGE_LOWER, REFERENCE_RANGE_UPPER, REFERENCE_X_SAMPS)
-x_diff = np.diff(x_range)[-1]
+reference_x_diff = np.diff(x_range)[-1]
 T_CENTER = 1.0
 
 
-SCALE_INVARIANT_GAMMA = 5/3 
+SCALE_INVARIANT_GAMMA = 5/3
 
 
 #Get reference profiles from the polytropic riemann expansion, which satisfies the Euler equations, 
@@ -48,11 +48,11 @@ def _get_euler_reference_vals_and_derivs():
     u_pderiv_t = 1 / (2.0 * REFERENCE_DELTA_T) * (velocity_profile_stack[2] - velocity_profile_stack[0])
 
     #Now do the derivatives 
-    rho_pderiv_x = 1 / (2.0 * x_diff) * (rho[2:] - rho[:-2]) 
-    u_pderiv_x = 1 / (2.0 * x_diff) * (u[2:] - u[:-2])
+    rho_pderiv_x = 1 / (2.0 * reference_x_diff) * (rho[2:] - rho[:-2]) 
+    u_pderiv_x = 1 / (2.0 * reference_x_diff) * (u[2:] - u[:-2])
 
     #Also need u_pderiv_xx for viscosity terms 
-    u_pderiv_xx = 1 / (np.square(x_diff)) * (u[2:] - 2 * u[1:-1] + u[:-2])
+    u_pderiv_xx = 1 / (np.square(reference_x_diff)) * (u[2:] - 2 * u[1:-1] + u[:-2])
 
 
     #Clip to match with spatial derivatives
@@ -73,93 +73,6 @@ def test_continuity_equation():
     #Loose tolerances because of discretization error... 
     assert np.allclose(rho_pderiv_t, continuity_rhs, rtol = 1e-5, atol = 1e-6)
 
-
-#Now test the momentum function factory under various conditions... 
-
-
-# def test_momentum_euler_isentropic_polytropic_equation():
-#     (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
-#      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs() 
-    
-#     momentum_euler_rhs = hydrodynamic_equations.momentum_euler_isentropic_polytropic_equation(
-#         rho, u, rho_pderiv_x, u_pderiv_x, SCALE_INVARIANT_GAMMA
-#     )
-
-#     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-5, atol = 1e-6)
-
-
-# def test_momentum_euler_isentropic_equation():
-#     (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
-#       rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
-    
-#     c_values = analytic_functions.normalized_speed_of_sound_isentropic_polytropic_eos(
-#         rho, gamma = SCALE_INVARIANT_GAMMA
-#     )
-
-#     momentum_euler_rhs = hydrodynamic_equations.momentum_euler_isentropic_equation(
-#         rho, u, rho_pderiv_x, u_pderiv_x, c_values
-#     )
-
-#     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-5, atol = 1e-6)
-
-# def test_momentum_euler_generic_equation():
-#     (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
-#      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
-    
-#     pressure_values = analytic_functions.normalized_pressure_isentropic_polytropic_eos(
-#         rho, gamma = SCALE_INVARIANT_GAMMA
-#     )
-
-#     P_pderiv_x = 1.0 / (2 * x_diff) * (pressure_values[2:] - pressure_values[:-2])
-
-#     rho = rho[1:-1]
-#     u = u[1:-1]
-#     u_pderiv_x = u_pderiv_x[1:-1] 
-#     u_pderiv_t = u_pderiv_t[1:-1] 
-
-#     momentum_euler_rhs = hydrodynamic_equations.momentum_euler_generic_equation(
-#         rho, u, u_pderiv_x, P_pderiv_x, 
-#     )
-
-#     #Slightly looser tolerance - maybe the pressure derivative is the issue...
-#     assert np.allclose(u_pderiv_t, momentum_euler_rhs, rtol = 1e-4, atol = 1e-5)
-
-
-#Just test viscosity for the polytropic case... 
-
-# #Const viscosity
-# def test_momentum_euler_const_viscosity_isentropic_polytropic_equation(): 
-#     (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
-#      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs() 
-    
-#     sample_eta = 0.1
-    
-#     momentum_euler_rhs_viscous = hydrodynamic_equations.momentum_euler_const_viscosity_isentropic_polytropic_equation(
-#         rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, SCALE_INVARIANT_GAMMA, sample_eta
-#     )
-
-#     momentum_euler_rhs_viscous_subtracted = momentum_euler_rhs_viscous - 1.0 / rho * (4/3) * u_pderiv_xx * sample_eta
-
-#     assert np.allclose(u_pderiv_t, momentum_euler_rhs_viscous_subtracted, rtol = 1e-5, atol = 1e-6)
-
-
-
-# #Var viscosity
-# def test_momentum_euler_var_viscosity_isentropic_polytropic_equation():
-#     (rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx,
-#      rho_pderiv_t, u_pderiv_t) = _get_euler_reference_vals_and_derivs()
-    
-#     sample_nu = 0.1
-#     eta = rho * sample_nu
-#     eta_pderiv_x = rho_pderiv_x * sample_nu
-    
-#     momentum_euler_rhs_viscous = hydrodynamic_equations.momentum_euler_var_viscosity_isentropic_polytropic_equation(
-#         rho, u, rho_pderiv_x, u_pderiv_x, u_pderiv_xx, eta, eta_pderiv_x, SCALE_INVARIANT_GAMMA)
-
-#     viscous_correction = 1.0 / rho * (4/3) * (u_pderiv_xx * eta + eta_pderiv_x * u_pderiv_x)
-#     momentum_euler_rhs_viscous_subtracted = momentum_euler_rhs_viscous - viscous_correction
-
-#     assert np.allclose(u_pderiv_t, momentum_euler_rhs_viscous_subtracted, rtol = 1e-5, atol = 1e-6)
 
 
 def test_diffusivity_equation():
@@ -193,13 +106,13 @@ def _sample_eval(state_var):
 
 def _sample_pderiv_x(state_var):
     current_var = state_var[0]
-    return np.gradient(current_var, x_diff, edge_order = 2)
+    return np.gradient(current_var, reference_x_diff, edge_order = 2)
 
 def _sample_pderiv_xx(state_var):
     current_var = state_var[0]
     return np.gradient(
-        np.gradient(current_var, x_diff, edge_order = 2),
-    x_diff, edge_order = 2)
+        np.gradient(current_var, reference_x_diff, edge_order = 2),
+    reference_x_diff, edge_order = 2)
 
 
 
@@ -352,15 +265,7 @@ def test_hydro_system_function_factory():
 
 
 
-
-
-def test_get_hydro_total_energy():
-    #Use the analytic result to verify constant energy for a simple case 
-    def sample_epsilon_func(state_vars):
-        rho, *_ = state_vars 
-        epsilon = 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.power(rho, SCALE_INVARIANT_GAMMA - 1)
-        return epsilon 
-
+def _get_sample_analytic_state_vars_stack():
     time_range = np.linspace(0.1, 1, 10)
     X_RANGE_MIN = -3 
     X_RANGE_MAX = 6
@@ -374,8 +279,112 @@ def test_get_hydro_total_energy():
         time_grid, x_grid, gamma = SCALE_INVARIANT_GAMMA
     )
     state_vars_stack = np.stack((analytic_rho_values, analytic_u_values))
+    return (x_diff, X_RANGE_MIN, state_vars_stack, time_range)
+
+
+def test_get_hydro_total_mass():
+    #Use an analytic result to verify mass conservation
+    x_diff, x_range_min, state_vars_stack, _ = _get_sample_analytic_state_vars_stack() 
+    masses = hydrodynamic_equations.get_hydro_total_mass(state_vars_stack, x_diff = x_diff)
+
+    non_vacuum_region_width = np.abs(x_range_min)
+    expected_mass = 1.0 * non_vacuum_region_width
+
+    assert np.allclose(masses, expected_mass)
+
+
+def test_get_hydro_total_momentum():
+    #Unlike the other two, momentum ISN'T conserved due to the pressure at the back wall
+    #However, it changes in a very predictable way 
+
+    x_diff, _, state_vars_stack, time_range = _get_sample_analytic_state_vars_stack() 
+
+    back_wall_pressure = 1.0 / SCALE_INVARIANT_GAMMA
+    predicted_momenta = back_wall_pressure * time_range
+
+    momenta = hydrodynamic_equations.get_hydro_total_momentum(state_vars_stack, x_diff)
+
+    assert np.allclose(momenta, predicted_momenta)
+
+
+def test_get_hydro_total_energy():
+    #Likewise, verify constant energy
+    x_diff, x_range_min, state_vars_stack, _ = _get_sample_analytic_state_vars_stack()
+
+
+    def sample_epsilon_func(state_vars):
+        rho, *_ = state_vars 
+        epsilon = 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.power(rho, SCALE_INVARIANT_GAMMA - 1)
+        return epsilon 
+
     energies = hydrodynamic_equations.get_hydro_total_energy(state_vars_stack, sample_epsilon_func, 
                                                              x_diff = x_diff)
-    expected_energy = 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.abs(X_RANGE_MIN)
+    
+    #All the energy starts out in the left portion of the x positions...
+    non_vacuum_region_width = np.abs(x_range_min) 
+    non_vacuum_expected_energy_density = sample_epsilon_func(np.array([1.0, 0.0]))
+    expected_energy = non_vacuum_expected_energy_density * non_vacuum_region_width
     assert np.allclose(energies, expected_energy)
+
+
+
+#Now test inflow through the boundaries using the reference Euler profiles... 
+
+def test_get_mass_conservation_boundary_correction():
+    state_vars_stack = _get_reference_profiles()
+    masses = hydrodynamic_equations.get_hydro_total_mass(state_vars_stack, x_diff = reference_x_diff)
+
+    mass_deriv = 1.0 / (2 * REFERENCE_DELTA_T) * (masses[-1] - masses[0])
+    expected_mass_deriv = hydrodynamic_equations.get_mass_conservation_boundary_correction(
+        state_vars_stack
+    )[1]
+
+    assert np.isclose(mass_deriv, expected_mass_deriv, rtol = 1e-5, atol = 1e-6)
+
+def test_get_momentum_conservation_boundary_correction():
+    state_vars_stack = _get_reference_profiles() 
+    momenta = hydrodynamic_equations.get_hydro_total_momentum(state_vars_stack, x_diff = reference_x_diff)
+
+    momentum_deriv = 1.0 / (2 * REFERENCE_DELTA_T) * (momenta[-1] - momenta[0]) 
+
+    def pressure_func(state_vars_stack):
+        rho, *_ = state_vars_stack 
+        return 1.0 / SCALE_INVARIANT_GAMMA * np.power(rho, SCALE_INVARIANT_GAMMA)
+
+    expected_momentum_deriv = hydrodynamic_equations.get_momentum_conservation_boundary_correction(
+        state_vars_stack, pressure_func
+    )[1] 
+
+    assert np.isclose(momentum_deriv, expected_momentum_deriv)
+
+
+def test_get_energy_conservation_boundary_correction():
+    state_vars_stack = _get_reference_profiles() 
+
+    def epsilon_func(state_vars_stack):
+        rho, *_ = state_vars_stack 
+        return 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1.0)) * np.power(rho, SCALE_INVARIANT_GAMMA - 1.0)
+
+    def enthalpy_func(state_vars_stack):
+        rho, *_ = state_vars_stack 
+        return 1.0 / (SCALE_INVARIANT_GAMMA - 1.0) * np.power(rho, SCALE_INVARIANT_GAMMA - 1.0)
+    
+    energies = hydrodynamic_equations.get_hydro_total_energy(state_vars_stack, epsilon_func, x_diff = reference_x_diff) 
+    energy_deriv = 1.0 / (2 * REFERENCE_DELTA_T) * (energies[-1] - energies[0])
+    
+    expected_energy_deriv = hydrodynamic_equations.get_energy_conservation_boundary_correction(
+        state_vars_stack, enthalpy_func
+    )[1]
+
+    assert np.isclose(energy_deriv, expected_energy_deriv, rtol = 1e-4, atol = 1e-5)
+
+
+#Now we run the bulk correction checks. 
+#Use the known analytic results for piston shockwave... 
+
+def test_get_momentun_conservation_bulk_correction():
+    pass 
+
+def test_get_energy_conservation_bulk_correction():
+    pass
 
