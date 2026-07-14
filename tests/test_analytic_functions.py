@@ -2,6 +2,7 @@ import os
 import sys
 
 import numpy as np 
+import matplotlib.pyplot as plt
 
 
 path_to_file = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +10,8 @@ path_to_repo = path_to_file + "/../../"
 sys.path.insert(0, path_to_repo)
 
 from Hydro_Numerics_1D.code import analytic_functions 
+
+SCALE_INVARIANT_GAMMA = 5/3
 
 
 def test_polytropic_riemann_expansion_density_profile(): 
@@ -55,6 +58,62 @@ def test_polytropic_riemann_expansion_velocity_profile():
     predicted_zero_values = 2.0 / (gamma_range + 1) 
     returned_zero_values = analytic_functions.polytropic_riemann_expansion_velocity_profile(sample_t, 0, gamma = gamma_range)
     assert np.allclose(predicted_zero_values, returned_zero_values)
+
+
+def test_polytropic_piston_velocity_profile():
+    #First check that the velocity at the piston is correct at all times 
+    long_time_range = np.linspace(0, 0.5, 1000) 
+    piston_face_velocities_long_time = analytic_functions.polytropic_piston_velocity_profile(long_time_range, 0, gamma = SCALE_INVARIANT_GAMMA)
+    expected_piston_face_velocities_long_time = long_time_range 
+
+    assert np.allclose(piston_face_velocities_long_time, expected_piston_face_velocities_long_time, rtol = 1e-5, atol = 1e-7)
+
+    #Then check that the velocities get launched properly along a sample characteristic 
+    SAMPLE_LAUNCH_TIME = 0.1 
+    piston_face_velocity_launch_time = SAMPLE_LAUNCH_TIME
+    expected_velocity_along_characteristic = piston_face_velocity_launch_time
+    piston_face_position_free_falling_sample_launch_time = 0.5 * np.square(SAMPLE_LAUNCH_TIME)
+    CHARACTERISTIC_EVOLUTION_TIME = 0.1 
+
+    expected_characteristic_speed = (SCALE_INVARIANT_GAMMA + 1) / 2.0 * piston_face_velocity_launch_time + 1.0 
+
+    characteristic_evolution_time_range = np.linspace(0, CHARACTERISTIC_EVOLUTION_TIME, 100)
+    characteristic_positions_free_falling = (piston_face_position_free_falling_sample_launch_time +
+                                         expected_characteristic_speed * characteristic_evolution_time_range)
+    
+    characteristic_times = SAMPLE_LAUNCH_TIME + characteristic_evolution_time_range
+    characteristic_positions_original_frame = characteristic_positions_free_falling - 0.5 * np.square(characteristic_times)
+
+    velocities_along_characteristic = analytic_functions.polytropic_piston_velocity_profile(characteristic_times, characteristic_positions_original_frame)
+    assert np.allclose(velocities_along_characteristic, expected_velocity_along_characteristic)
+
+
+def test_polytropic_piston_density_profile():
+    #Restrict focus to places before shock has formed
+    x_range = np.linspace(0, 1, 100) 
+    time_range = np.linspace(0, 0.5, 100)
+
+    time_grid, x_grid = np.meshgrid(time_range, x_range, indexing = "ij")
+
+    sample_rho_values = analytic_functions.polytropic_piston_density_profile(time_grid, x_grid, gamma = SCALE_INVARIANT_GAMMA)
+
+    #We've already tested the velocities, so trust them
+    sample_velocities = analytic_functions.polytropic_piston_velocity_profile(time_grid, x_grid, gamma = SCALE_INVARIANT_GAMMA)
+    #Use the known result from riemann invariants 
+    sample_c_values = 1.0 + (SCALE_INVARIANT_GAMMA - 1.0) / 2.0 * sample_velocities 
+    #Convert the speeds of sound to densities
+    expected_rho_values = np.power(sample_c_values, 2.0 / (SCALE_INVARIANT_GAMMA - 1.0))
+
+    assert np.allclose(sample_rho_values, expected_rho_values)
+
+
+def test_polytropic_piston_face_density():
+    #Analytically calculated value
+    SAMPLE_TIME = 0.75
+    EXPECTED_PISTON_FACE_DENSITY = np.power(5/4, 3) 
+    sample_piston_face_density = analytic_functions.polytropic_piston_face_density(SAMPLE_TIME, gamma = SCALE_INVARIANT_GAMMA)
+    assert np.isclose(sample_piston_face_density, EXPECTED_PISTON_FACE_DENSITY)
+
 
 #Just verify that we've written it down properly...
 def test_normalized_pressure_isentropic_polytropic_eos():
