@@ -46,7 +46,7 @@ def polytropic_piston_velocity_profile(t, x, gamma = UNITARY_GAMMA):
     _validate_piston_t(t, gamma)
 
     #Analytic formulas are simplest in the free-falling frame, where the piston is accelerating
-    #and the gas is 
+    #and the gas experiences no body force
     x_free_fall = x + 0.5 * np.square(t)
     velocity_free_fall =  np.where(
         x_free_fall < t, 
@@ -70,8 +70,8 @@ def polytropic_piston_density_profile(t, x, gamma = UNITARY_GAMMA):
 #of shock formation reaches the piston face. 
 #WARNING: no checks are made to see if this condition is fulfilled!
 def polytropic_piston_face_density(t, gamma = UNITARY_GAMMA):
-    piston_face_velocity = t 
-    piston_face_c = _v_to_c_func(piston_face_velocity, gamma)
+    piston_face_velocity_free = t 
+    piston_face_c = _v_to_c_func(piston_face_velocity_free, gamma)
     piston_face_rho = _c_to_rho_func(piston_face_c, gamma) 
     return piston_face_rho
 
