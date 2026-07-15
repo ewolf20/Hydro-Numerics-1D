@@ -25,7 +25,7 @@ SCALE_INVARIANT_GAMMA = 5/3
 
 #Get reference profiles from the polytropic riemann expansion, which satisfies the Euler equations, 
 #Use these profiles to validate that the Euler equations are written down correctly!
-def _get_reference_profiles():
+def _get_rarefaction_reference_profiles():
     #Sample only from the range away from cusps
     x_range = np.linspace(REFERENCE_RANGE_LOWER, REFERENCE_RANGE_UPPER, REFERENCE_X_SAMPS)
 
@@ -41,7 +41,7 @@ def _get_reference_profiles():
     return(density_profile_stack, velocity_profile_stack)
 
 def _get_euler_reference_vals_and_derivs(): 
-    density_profile_stack, velocity_profile_stack = _get_reference_profiles()
+    density_profile_stack, velocity_profile_stack = _get_rarefaction_reference_profiles()
     rho = density_profile_stack[1] 
     u = velocity_profile_stack[1] 
     rho_pderiv_t = 1 / (2.0 * REFERENCE_DELTA_T) * (density_profile_stack[2] - density_profile_stack[0])
@@ -113,7 +113,6 @@ def _sample_pderiv_xx(state_var):
     return np.gradient(
         np.gradient(current_var, reference_x_diff, edge_order = 2),
     reference_x_diff, edge_order = 2)
-
 
 
 def test_momentum_equation_solver_wrapped_factory():
@@ -294,7 +293,7 @@ def test_get_hydro_total_mass():
 
 
 def test_get_hydro_total_momentum():
-    #Unlike the other two, momentum ISN'T conserved due to the pressure at the back wall
+    #Unlike the other two, momentum ISN'T conserved due to the pressure at the back edge
     #However, it changes in a very predictable way 
 
     x_diff, _, state_vars_stack, time_range = _get_sample_analytic_state_vars_stack() 
@@ -331,7 +330,7 @@ def test_get_hydro_total_energy():
 #Now test inflow through the boundaries using the reference Euler profiles... 
 
 def test_get_mass_conservation_boundary_correction():
-    state_vars_stack = _get_reference_profiles()
+    state_vars_stack = _get_rarefaction_reference_profiles()
     masses = hydrodynamic_equations.get_hydro_total_mass(state_vars_stack, x_diff = reference_x_diff)
 
     mass_deriv = 1.0 / (2 * REFERENCE_DELTA_T) * (masses[-1] - masses[0])
@@ -342,7 +341,7 @@ def test_get_mass_conservation_boundary_correction():
     assert np.isclose(mass_deriv, expected_mass_deriv, rtol = 1e-5, atol = 1e-6)
 
 def test_get_momentum_conservation_boundary_correction():
-    state_vars_stack = _get_reference_profiles() 
+    state_vars_stack = _get_rarefaction_reference_profiles() 
     momenta = hydrodynamic_equations.get_hydro_total_momentum(state_vars_stack, x_diff = reference_x_diff)
 
     momentum_deriv = 1.0 / (2 * REFERENCE_DELTA_T) * (momenta[-1] - momenta[0]) 
@@ -353,13 +352,13 @@ def test_get_momentum_conservation_boundary_correction():
 
     expected_momentum_deriv = hydrodynamic_equations.get_momentum_conservation_boundary_correction(
         state_vars_stack, pressure_func
-    )[1] 
+    )[1]
 
     assert np.isclose(momentum_deriv, expected_momentum_deriv)
 
 
 def test_get_energy_conservation_boundary_correction():
-    state_vars_stack = _get_reference_profiles() 
+    state_vars_stack = _get_rarefaction_reference_profiles() 
 
     def epsilon_func(state_vars_stack):
         rho, *_ = state_vars_stack 
@@ -382,9 +381,86 @@ def test_get_energy_conservation_boundary_correction():
 #Now we run the bulk correction checks. 
 #Use the known analytic results for piston shockwave... 
 
-def test_get_momentun_conservation_bulk_correction():
-    pass 
+REFERENCE_DELTA_T_PS = 0.001
+REFERENCE_X_SAMPS_PS = 1000
+REFERENCE_RANGE_LOWER_PS = 0.1
+REFERENCE_RANGE_UPPER_PS = 1.0
+x_range_ps = np.linspace(REFERENCE_RANGE_LOWER_PS, REFERENCE_RANGE_UPPER_PS, REFERENCE_X_SAMPS_PS)
+reference_x_diff_ps = np.diff(x_range_ps)[-1]
+T_CENTER_PS = 0.5
+t_range_ps = np.array([T_CENTER_PS - REFERENCE_DELTA_T_PS, T_CENTER_PS, T_CENTER_PS + REFERENCE_DELTA_T_PS])
+
+
+def _get_piston_shockwave_reference_profile():
+    #Sample only from the range away from cusps
+
+    t_grid, x_grid = np.meshgrid(t_range_ps, x_range_ps, indexing = "ij")
+
+    density_profile_stack = analytic_functions.polytropic_piston_density_profile(t_grid, x_grid, 
+                                                                                      gamma = SCALE_INVARIANT_GAMMA)
+    velocity_profile_stack = analytic_functions.polytropic_piston_velocity_profile(t_grid, x_grid, 
+                                                                                        gamma = SCALE_INVARIANT_GAMMA)
+    
+    return np.stack((density_profile_stack, velocity_profile_stack))
+
+
+def test_get_momentum_conservation_bulk_correction():
+    IMPUTED_ACCEL = -1.0
+    state_vars_stack = _get_piston_shockwave_reference_profile() 
+
+    momenta = hydrodynamic_equations.get_hydro_total_momentum(state_vars_stack, x_diff = reference_x_diff_ps)
+    momentum_deriv = 1.0 / (2 * REFERENCE_DELTA_T_PS) * (momenta[-1] - momenta[0])
+
+    def pressure_func(state_vars_stack):
+        rho, *_ = state_vars_stack 
+        return 1.0 / SCALE_INVARIANT_GAMMA * np.power(rho, SCALE_INVARIANT_GAMMA)
+    
+    momentum_deriv_boundary = hydrodynamic_equations.get_momentum_conservation_boundary_correction(
+        state_vars_stack, pressure_func
+    )[1]
+
+    #start out with a constant acceleration
+    expected_momentum_deriv_bulk = hydrodynamic_equations.get_momentum_conservation_bulk_correction(
+        state_vars_stack, 'const', IMPUTED_ACCEL, x_diff = reference_x_diff_ps
+    )[1]
+    expected_momentum_deriv = expected_momentum_deriv_bulk + momentum_deriv_boundary
+    assert np.isclose(expected_momentum_deriv, momentum_deriv, rtol = 1e-4, atol = 1e-5)
+
+    #Then verify that the functional form for acceleration is also working
+    def accel_func(t, x):
+        return IMPUTED_ACCEL * np.ones((t.shape[0], x.shape[0]))
+    
+    expected_momentum_deriv_bulk = hydrodynamic_equations.get_momentum_conservation_bulk_correction(
+        state_vars_stack, 'arbitrary', accel_func, t = t_range_ps, x = x_range_ps,  x_diff = reference_x_diff_ps
+    )[1]
+
+    expected_momentum_deriv = expected_momentum_deriv_bulk + momentum_deriv_boundary
+    assert np.isclose(expected_momentum_deriv, momentum_deriv, rtol = 1e-4, atol = 1e-5)
 
 def test_get_energy_conservation_bulk_correction():
-    pass
+    IMPUTED_ACCEL = -1.0 
+    state_vars_stack = _get_piston_shockwave_reference_profile()
+
+    def epsilon_func(state_vars_stack):
+        rho, *_ = state_vars_stack
+        return 1.0 / (SCALE_INVARIANT_GAMMA * (SCALE_INVARIANT_GAMMA - 1)) * np.power(rho, SCALE_INVARIANT_GAMMA - 1.0)
+
+    energies = hydrodynamic_equations.get_hydro_total_energy(state_vars_stack, epsilon_func, x_diff = reference_x_diff_ps)
+    energy_deriv = 1.0 / (2 * REFERENCE_DELTA_T_PS) * (energies[-1] - energies[0])
+
+    def enthalpy_func(state_vars_stack):
+        rho, *_ = state_vars_stack 
+        return 1.0 / (SCALE_INVARIANT_GAMMA - 1.0) * np.power(rho, SCALE_INVARIANT_GAMMA - 1.0)
+    
+    energy_deriv_boundary = hydrodynamic_equations.get_energy_conservation_boundary_correction(
+        state_vars_stack, enthalpy_func)[1]
+
+
+    expected_energy_deriv_bulk = hydrodynamic_equations.get_energy_conservation_bulk_correction(
+        state_vars_stack, "const", IMPUTED_ACCEL, x_diff = reference_x_diff_ps
+    )[1]
+
+    expected_energy_deriv = energy_deriv_boundary + expected_energy_deriv_bulk
+
+    assert np.isclose(energy_deriv, expected_energy_deriv, rtol = 1e-4, atol = 1e-5)
 

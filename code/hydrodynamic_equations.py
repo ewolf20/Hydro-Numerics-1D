@@ -422,8 +422,10 @@ Params:
 def _ext_accel_helper(ext_accel_type, ext_accel, t, x):
     if ext_accel_type == "const":
         return ext_accel 
-    else:
+    elif ext_accel_type == "arbitrary":
         return ext_accel(t, x)
+    else:
+        raise ValueError("Invalid ext_accel_type; valid values are 'const' and 'arbitrary'.")
 
 def get_momentum_conservation_bulk_correction(state_vars_stack, ext_accel_type, ext_accel, 
                                               t = None, x = None, x_diff = 1.0):
