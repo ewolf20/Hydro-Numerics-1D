@@ -1,3 +1,9 @@
+#Common plot filetypes, in case any are generated 
+*.pdf 
+*.png 
+*.gif 
+*.jpg
+
 #DS_Store files for Mac
 .DS_Store
 
