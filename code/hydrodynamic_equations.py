@@ -280,24 +280,175 @@ def hydro_system_function_factory(continuity_solver_wrapped, momentum_solver_wra
 
     return hydro_system_function
 
-"""Given input state vars, calculate the total energy. 
+
+
+
+
+"""Given input state vars, calculate the total value of the conserved quantities mass, momentum, and energy. 
 
 Params: 
-    state_vars_stack: An ND array of shape (k, ..., N), with k >= 2. The first axis is assumed to encode the state variables
-        (rho, u, ...), and the last encodes the 1D position axis - any other axes, if present, are broadcast over. 
 
+    state_vars_stack: A (k, ..., N) ndarray whose first axis encodes the different hydrodynamic variables (rho, v, s) 
+    and whose last axis encodes the spatial position. Positions are assumed to be equally spaced.
+    
+    x_diff: The spacing between positions. Passed to numpy.trapz
+    
+"""
+
+def get_hydro_total_mass(state_vars_stack, x_diff = 1.0):
+    rho, *_ = state_vars_stack 
+    integrand = rho 
+    return np.trapz(integrand, dx = x_diff, axis = -1)
+
+
+def get_hydro_total_momentum(state_vars_stack, x_diff = 1.0):
+    rho, v, *_ = state_vars_stack 
+    integrand = rho * v 
+    return np.trapz(integrand, dx = x_diff, axis = -1)
+
+"""
+Extra param: 
     epsilon_func: A function epsilon_func(state_vars) which takes as input the (k, ...) state vars ND array and returns 
         the (normalized) energy per unit mass, according to the normalization: 
 
         epsilon' = epsilon / c_0^2
 
         If more axes than the first are present, they are broadcast over.
-
-    x_diff: Default 1.0. If specified, the x-difference (in sim units) between adjacent points along the last axis of 
-        state_vars_stack. Used as input to np.trapz.
 """
 def get_hydro_total_energy(state_vars_stack, epsilon_func, x_diff = 1.0): 
     rho, u, *_ = state_vars_stack 
     epsilon = epsilon_func(state_vars_stack) 
     integrand = 0.5 * rho * np.square(u) + rho * epsilon
     return np.trapz(integrand, dx = x_diff, axis = -1)
+
+"""
+Corrections to the conservation laws for, respectively, mass, momentum, and energy due 
+to inflows and outflows at the boundaries of our 1D system. 
+
+Parameters:
+
+state_vars_stack: A [k, ..., N] array, where the first axis encodes the different 
+hydrodynamic variables (rho, v, s) and the last axis encodes the position. 
+
+*_func: A function which takes an input ndarray of shape state_vars_stack and 
+returns the appropriate quantity for boundary flow calculations, broadcast over 
+all axes besides the first
+
+Returns: dX/dt, with X the conserved quantity and t in sim units."""
+
+def get_mass_conservation_boundary_correction(state_vars_stack):
+    rho, v, *_ = state_vars_stack 
+
+    #By convention, the flow of mass from left to right
+    def boundary_mass_flow_func(rho_b, v_b):
+        return rho_b * v_b
+    
+    rho_b_left = rho[..., 0] 
+    v_b_left = v[..., 0]
+    left_boundary_inflow = boundary_mass_flow_func(rho_b_left, v_b_left) 
+
+    rho_b_right = rho[..., -1] 
+    v_b_right = v[..., -1]
+    right_boundary_inflow = -1.0 * boundary_mass_flow_func(rho_b_right, v_b_right)
+
+    return (left_boundary_inflow + right_boundary_inflow)
+
+
+def get_momentum_conservation_boundary_correction(state_vars_stack, pressure_func): 
+    rho, v, *_ = state_vars_stack 
+    pressure_vals = pressure_func(state_vars_stack) 
+
+    def boundary_momentum_flow_func(rho_b, v_b, pressure_b):
+        return rho_b * np.square(v_b) + pressure_b
+
+    rho_b_left = rho[..., 0] 
+    v_b_left = v[..., 0] 
+    pressure_b_left = pressure_vals[..., 0] 
+    left_boundary_inflow = boundary_momentum_flow_func(rho_b_left, v_b_left, pressure_b_left)
+
+    rho_b_right = rho[..., -1] 
+    v_b_right = v[..., -1] 
+    pressure_b_right = pressure_vals[..., -1] 
+    right_boundary_inflow = -1.0 * boundary_momentum_flow_func(rho_b_right, v_b_right, pressure_b_right)
+
+    return left_boundary_inflow + right_boundary_inflow
+
+#Enthalpy func is the _specific_ enthalpy, epsilon + P/rho
+def get_energy_conservation_boundary_correction(state_vars_stack, enthalpy_func):
+    rho, v, *_ = state_vars_stack
+    enthalpy_values = enthalpy_func(state_vars_stack)
+
+    def boundary_energy_flow_func(rho_b, v_b, enthalpy_b):
+        return v_b * (0.5 * rho_b * np.square(v_b) + rho_b * enthalpy_b)
+
+    rho_b_left = rho[..., 0] 
+    v_b_left = v[..., 0] 
+    enthalpy_b_left = enthalpy_values[..., 0] 
+    left_boundary_inflow = boundary_energy_flow_func(rho_b_left, v_b_left, enthalpy_b_left)
+
+    rho_b_right = rho[..., -1]
+    v_b_right = v[..., -1] 
+    enthalpy_b_right = enthalpy_values[..., -1]
+    right_boundary_inflow = -1.0 * boundary_energy_flow_func(rho_b_right, v_b_right, enthalpy_b_right)
+
+    return (left_boundary_inflow + right_boundary_inflow)
+
+
+"""Bulk currections to the conservation laws due to external accelerations on the gas.
+
+Params: 
+
+    state_vars_stack: As above. 
+
+    ext_accel_type: String literal, either 'const' or 'arbitrary'
+
+    ext_accel: Either a float if ext_accel_type == 'const', or else a function 
+        ext_accel(t, x), representing the acceleration of the gas and returning an array 
+        of shape (..., N). 
+
+    t: An array of shape (..., (N)) matching the extra axes of state_vars_stack. May be arbitrary in general, 
+        but will generally be a 1D array (l,) representing the times at which the state vars are given
+
+    x: An array of shape ((...), N,), matching state_vars_stack and representing spatial position
+
+    Note: t and x are only used for a non-constant acceleration. The shape condition on t and x is 
+    that ext_accel(t, x) returns an array of shape (..., N)
+
+    x_diff: As above. Passed to np.trapz
+
+    Returns: dX/dt, as above, where X is the conserved quantity and t is in sim units. Shape is (...)
+"""
+
+def _ext_accel_helper(ext_accel_type, ext_accel, t, x):
+    if ext_accel_type == "const":
+        return ext_accel 
+    elif ext_accel_type == "arbitrary":
+        return ext_accel(t, x)
+    else:
+        raise ValueError("Invalid ext_accel_type; valid values are 'const' and 'arbitrary'.")
+
+def get_momentum_conservation_bulk_correction(state_vars_stack, ext_accel_type, ext_accel, 
+                                              t = None, x = None, x_diff = 1.0):
+    
+    accel_vals = _ext_accel_helper(ext_accel_type, ext_accel, t, x)
+    rho, *_ = state_vars_stack
+
+    def bulk_momentum_correction(rho, accel):
+        return rho * accel
+    
+    momentum_correction_spatial = bulk_momentum_correction(rho, accel_vals)
+    momentum_correction_integrated = np.trapz(momentum_correction_spatial, dx = x_diff, axis = -1)
+    return momentum_correction_integrated
+
+def get_energy_conservation_bulk_correction(state_vars_stack, ext_accel_type, ext_accel, t = None, 
+                                            x = None, x_diff = 1.0):
+    accel_vals = _ext_accel_helper(ext_accel_type, ext_accel, t, x)
+    rho, v, *_ = state_vars_stack
+
+    def bulk_energy_correction(rho, v, accel):
+        return rho * v * accel
+    
+    energy_correction_spatial = bulk_energy_correction(rho, v, accel_vals) 
+    energy_correction_integrated = np.trapz(energy_correction_spatial, dx = x_diff, axis = -1)
+    return energy_correction_integrated
+    
