@@ -4,26 +4,25 @@ Tools for solving the 1D hydrodynamics equations by finite differences
 # Overview 
 
 This repository is a collection of tools for numerically solving the 1D hydrodynamic 
-equations. It is developed in service of the following publication: 
+equations. It is developed in service of the following publications: 
 
-Wolf. E and Zwierlein, M. In prep. 
+Wolf. E. A. and Zwierlein, M. arXiv:2606.06659 (submitted to PRL)
+https://doi.org/10.48550/arXiv.2606.06659
 
-Efforts will be made to keep e.g. numerical steps detail-agnostic, but in general
-the code will be highly tailored to the experimental system of relevance: a Riemann 
-problem where the strongly-interacting Fermi gas is expanded into vacuum in a quasi-1D 
-geometry. Where analytic results are coded up, they will be those of relevance to this system. 
 
-Noteworthy design decisions in keeping with this include:
+The code is in large part detail-agnostic, but some decisions have been made with the specific case 
+of our experimental system - a unitary Fermi gas in a box trap - in mind: 
 
 ## Normalizations
 
-For the Riemann problem of relevance, the initial mass density rho_0 and speed of sound c_0 are 
-natural normalizations, and so will be used liberally to render units dimensionless. 
+Simulations are conducted in dimensionless units. For many problems, these may be taken to correspond 
+to units in which the initial density and speed of sound of the gas are normalized to 1. 
+
 
 ## Polytropic Equation of State 
 
 The unitary Fermi gas at constant entropy features a polytropic equation of state, P = K rho^gamma, 
-with gamma = 5/3. As such, the code will be designed with this case in mind - though where possible the option for general equations of state will be retained. 
+with gamma = 5/3. As such, there is substantial support for the special case of a polytropic EOS. 
 
 ## Isentropic Dynamics 
 
@@ -31,11 +30,9 @@ The evolution of a 1D system of Euler equations is both adiabatic and locally is
 
 # Disclaimer
 
-To begin: I am not a numerics expert. It is not my fault if this code doesn't do what you want. It is especially not my fault if this code fails to do what you want in a way that is not immediately conspicuous. 
+I (EW) am not a numerics expert. It is not my fault if this code doesn't do what you want. It is also not my fault if this code fails to do what you want in a way that is not immediately conspicuous. 
 
-For my own utility, some tools will be included to try to benchmark numerical stability, but I do not envision any automated warnings, smart parameter checking, or detailed analysis of discretization errors.
-
-You have been warned. 
+Some tools will be included to try to benchmark numerical stability, but I do not envision any automated warnings, smart parameter checking, or detailed analysis of discretization errors.
 
 
 # Acknowledgements 
