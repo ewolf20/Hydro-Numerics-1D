@@ -127,6 +127,17 @@ def test_solve_equations():
     assert np.allclose(expected_final_rho_leapfrog, final_rho_leapfrog, atol = 1e-4, rtol = 1e-3)
     assert np.allclose(expected_final_velocity_leapfrog, final_velocity_leapfrog, atol = 1e-4, rtol = 1e-3)
 
+    #Check evolution for an irregular number of steps 
+    advective_irregular_num_steps = 1337
+    times_irregular, _ = solver_functions.solve_equations(
+        euler_hydro_system, 
+        initial_state_advective, advective_xdiff, advective_tdiff, advective_irregular_num_steps, 
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False, 
+        guarantee_last = True)
+    
+    assert times_irregular[-1] == advective_tdiff * advective_irregular_num_steps
+
+
     #Now deliberately engineer an unstable evolution of the equations... 
     num_x_samples_unstable = 2000
     advective_x_range_unstable = np.linspace(-2.0, 5.0, num_x_samples_unstable)
