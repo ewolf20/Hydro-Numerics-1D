@@ -55,6 +55,9 @@ Parameters:
 
     print_progress: If true, the solver will issue print statements meant to estimate its total runtime
 
+    guarantee_last: If True, guarantee that the last simulated time and state of the system are recorded 
+    in times and states, even if t_steps % output_increment != 0.
+
     check_finite: If True, the solver will check at each stage whether the system state is finite 
     (i.e. not np.inf or np.nan); if this condition fails, the solver will abort and return the system evolution 
     up to the last finite state.
@@ -69,7 +72,7 @@ Parameters:
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
                     deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, boundary_func = None, 
                     boundary_func_left = None, boundary_func_right = None, explicit_boundary = False,
-                    output_increment = None, print_progress = False, check_finite = True):
+                    output_increment = None, print_progress = False, guarantee_last = False, check_finite = True):
     
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff, explicit_eq)
     equation_fin_diff_funcs = method_fin_diff_funcs[:deriv_order + 1]
@@ -155,6 +158,12 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
         current_state_vars_stack[:, 1:] = current_state_vars_stack[:, :-1] 
         current_state_vars_stack[:, 0] = state_update
+
+    #If guarantee_last, ensure that the last state is included in the returns, and avoid duplicates 
+    if guarantee_last and success and t_steps % output_increment != 0:
+        #Use the fact that t and state_var are at their final values
+        output_state_list.append(state_update) 
+        output_time_list.append(t)
 
     output_state_array = np.array(output_state_list)
     output_time_array = np.array(output_time_list)
