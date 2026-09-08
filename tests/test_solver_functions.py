@@ -12,6 +12,8 @@ sys.path.insert(0, path_to_repo)
 
 from Hydro_Numerics_1D.code import analytic_functions, hydrodynamic_equations, solver_functions 
 
+TEST_TEMP_PATH = "Test_Temp"
+
 
 def test_solve_equations():
     #Begin by testing forward Euler integration of diffusive equations
@@ -126,6 +128,33 @@ def test_solve_equations():
     #Numerics are imperfect, but captures correct behavior...
     assert np.allclose(expected_final_rho_leapfrog, final_rho_leapfrog, atol = 1e-4, rtol = 1e-3)
     assert np.allclose(expected_final_velocity_leapfrog, final_velocity_leapfrog, atol = 1e-4, rtol = 1e-3)
+
+    #Verify that the incremental output is working... 
+    if not os.path.exists(TEST_TEMP_PATH):
+        os.mkdir(TEST_TEMP_PATH)
+
+    time_file_path = os.path.join(TEST_TEMP_PATH, "Times.npy") 
+    state_var_file_path = os.path.join(TEST_TEMP_PATH, "State_Vars.npy") 
+
+    try:
+        times_leapfrog, state_vars_leapfrog = solver_functions.solve_equations(
+        euler_hydro_system, 
+        initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps, 
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False, 
+        incremental_output = True, time_numpy_path = time_file_path, 
+        state_var_numpy_path = state_var_file_path)
+
+        times_saved = np.load(time_file_path)
+        state_vars_saved = np.load(state_var_file_path) 
+
+        assert np.allclose(times_saved, times_leapfrog) 
+        assert np.allclose(state_vars_saved, state_vars_leapfrog) 
+
+    finally:
+        os.remove(time_file_path)
+        os.remove(state_var_file_path)
+        os.rmdir(TEST_TEMP_PATH)
+
 
     #Check evolution for an irregular number of steps 
     advective_irregular_num_steps = 1337
