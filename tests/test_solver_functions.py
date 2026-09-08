@@ -133,15 +133,15 @@ def test_solve_equations():
     if not os.path.exists(TEST_TEMP_PATH):
         os.mkdir(TEST_TEMP_PATH)
 
-    time_file_path = os.path.join(TEST_TEMP_PATH, "Times.npy") 
-    state_var_file_path = os.path.join(TEST_TEMP_PATH, "State_Vars.npy") 
+    time_file_path = os.path.join(TEST_TEMP_PATH, "Times.npy")
+    state_var_file_path = os.path.join(TEST_TEMP_PATH, "State_Vars.npy")
 
     try:
         times_leapfrog, state_vars_leapfrog = solver_functions.solve_equations(
-        euler_hydro_system, 
-        initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps, 
-        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False, 
-        incremental_output = True, time_numpy_path = time_file_path, 
+        euler_hydro_system,
+        initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps,
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False,
+        incremental_output = True, time_numpy_path = time_file_path,
         state_var_numpy_path = state_var_file_path)
 
         times_saved = np.load(time_file_path)
@@ -149,6 +149,41 @@ def test_solve_equations():
 
         assert np.allclose(times_saved, times_leapfrog) 
         assert np.allclose(state_vars_saved, state_vars_leapfrog) 
+
+    finally:
+        os.remove(time_file_path)
+        os.remove(state_var_file_path)
+        os.rmdir(TEST_TEMP_PATH)
+
+    #Check resumption after interruption... 
+    if not os.path.exists(TEST_TEMP_PATH):
+        os.mkdir(TEST_TEMP_PATH)
+
+    time_file_path = os.path.join(TEST_TEMP_PATH, "Times.npy")
+    state_var_file_path = os.path.join(TEST_TEMP_PATH, "State_Vars.npy")
+
+    try:
+        half_times_leapfrog, half_state_vars_leapfrog = solver_functions.solve_equations(
+        euler_hydro_system,
+        initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps // 2,
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False,
+        incremental_output = True, time_numpy_path = time_file_path,
+        state_var_numpy_path = state_var_file_path)
+
+        assert np.allclose(half_times_leapfrog, times_leapfrog[:len(half_times_leapfrog)])
+        assert np.allclose(half_state_vars_leapfrog, state_vars_leapfrog[:, :len(half_times_leapfrog)])
+
+        #Now resume the outputs... 
+        full_times_leapfrog, full_state_vars_leapfrog = solver_functions.solve_equations(
+        euler_hydro_system,
+        initial_state_advective, advective_xdiff, advective_tdiff, advective_num_steps,
+        method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False,
+        resume_existing = True, time_numpy_path = time_file_path,
+        state_var_numpy_path = state_var_file_path)
+
+        #Output should be the same as for unbroken evaluation... 
+        assert np.allclose(full_times_leapfrog, times_leapfrog)
+        assert np.allclose(full_state_vars_leapfrog, state_vars_leapfrog)
 
     finally:
         os.remove(time_file_path)
@@ -164,7 +199,7 @@ def test_solve_equations():
         method = "leapfrog", deriv_order = 1, output_increment = 1000, check_finite = False, 
         guarantee_last = True)
     
-    assert times_irregular[-1] == advective_tdiff * advective_irregular_num_steps
+    assert np.isclose(times_irregular[-1], advective_tdiff * advective_irregular_num_steps)
 
 
     #Now deliberately engineer an unstable evolution of the equations... 

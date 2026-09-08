@@ -114,7 +114,28 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     output_state_list = []
     output_time_list = []
-    update_output(t_init, initial_state, output_time_list, output_state_list)
+
+    #If resume_existing is true, hijack the initial state and inject the last state from the existing results...
+    if resume_existing and not (time_numpy_path is None or state_var_numpy_path is None):
+        #Load existing times 
+        existing_times = np.load(time_numpy_path)
+        existing_state_vars = np.load(state_var_numpy_path)
+
+        #Fix convention of 
+        existing_state_vars_rearranged = np.moveaxis(existing_state_vars, 1, 0)
+        output_state_list = list(existing_state_vars_rearranged)
+        output_time_list = list(existing_times)
+
+        last_existing_time = existing_times[-1] 
+        #Time axis is second, by convention
+        last_existing_state_var = existing_state_vars[:, -1] 
+        initial_state = last_existing_state_var 
+        t = last_existing_time 
+        last_existing_time_num_steps = int(np.round(last_existing_time / t_diff))
+        t_steps = t_steps - last_existing_time_num_steps
+    else:
+        t = t_init 
+        update_output(t_init, initial_state, output_time_list, output_state_list)
 
     #Massage initial_state into the form required by the stepper 
     #Initial state should be a 2D array; insert a time axis in position 1
@@ -139,7 +160,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     success = True
     for i in range(t_steps):
-        t = t_init + t_diff * (i + 1)
+        t += t_diff
         if not explicit_eq:
             state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
         else:
