@@ -62,6 +62,18 @@ Parameters:
     (i.e. not np.inf or np.nan); if this condition fails, the solver will abort and return the system evolution 
     up to the last finite state.
 
+    incremental_output: If True, the solver will save its output values incrementally to a specified .npy file, 
+    in addition to returning them at termination. Carries a small time cost, but good if interruption is expected. 
+
+    resume_existing: If True and both time_numpy_path and state_var_numpy_path are not None, resume the simulation 
+    using the state saved in those locations. 
+
+        NOTE: This is not a completely clean resumption, instead acting as if one had fed the final state from state_vars_numpy_path 
+        in as an initial state, then evolved the system for a time equal to the difference between the last time from 
+        time_numpy_path and the imputed target runtime. 
+
+    time_numpy_path, state_var_numpy_path: Default None. Used in conjunction with incremental_output and resume_existing, per above.
+
     Returns:
 
     If check_finite, a tuple (success, times, states). Success is a boolean representing whether the system 
@@ -72,8 +84,23 @@ Parameters:
 def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, method = "forward_euler", 
                     deriv_order = 1, explicit_eq = False, t_init = 0.0, x_left = 0.0, boundary_func = None, 
                     boundary_func_left = None, boundary_func_right = None, explicit_boundary = False,
-                    output_increment = None, print_progress = False, guarantee_last = False, check_finite = True):
-    
+                    output_increment = None, print_progress = False, guarantee_last = False, check_finite = True, 
+                    time_numpy_path = None, state_var_numpy_path = None, incremental_output = False, 
+                    resume_existing = False):
+
+    #Function for updating the output arrays - no returns as it mutates the underlying lists
+    def update_output(t, state_update, output_time_list, output_state_list): 
+        output_state_list.append(state_update) 
+        output_time_list.append(t)
+        if incremental_output and not (time_numpy_path is None or state_var_numpy_path is None):
+            output_state_array = np.array(output_state_list) 
+            #Reshape to standard form of state variable index first 
+            output_state_array = np.moveaxis(output_state_array, 1, 0)
+            np.save(state_var_numpy_path, output_state_array)
+            output_time_array = np.array(output_time_list)
+            np.save(time_numpy_path, output_time_array)
+
+
     method_time_order, method_fin_diff_funcs, stepper = _handle_method(method, x_diff, explicit_eq)
     equation_fin_diff_funcs = method_fin_diff_funcs[:deriv_order + 1]
 
@@ -87,8 +114,28 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     output_state_list = []
     output_time_list = []
-    output_state_list.append(initial_state) 
-    output_time_list.append(t_init)
+
+    #If resume_existing is true, hijack the initial state and inject the last state from the existing results...
+    if resume_existing and not (time_numpy_path is None or state_var_numpy_path is None):
+        #Load existing times 
+        existing_times = np.load(time_numpy_path)
+        existing_state_vars = np.load(state_var_numpy_path)
+
+        #Fix convention of 
+        existing_state_vars_rearranged = np.moveaxis(existing_state_vars, 1, 0)
+        output_state_list = list(existing_state_vars_rearranged)
+        output_time_list = list(existing_times)
+
+        last_existing_time = existing_times[-1] 
+        #Time axis is second, by convention
+        last_existing_state_var = existing_state_vars[:, -1] 
+        initial_state = last_existing_state_var 
+        t = last_existing_time 
+        last_existing_time_num_steps = int(np.round(last_existing_time / t_diff))
+        t_steps = t_steps - last_existing_time_num_steps
+    else:
+        t = t_init 
+        update_output(t_init, initial_state, output_time_list, output_state_list)
 
     #Massage initial_state into the form required by the stepper 
     #Initial state should be a 2D array; insert a time axis in position 1
@@ -113,7 +160,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
     success = True
     for i in range(t_steps):
-        t = t_init + t_diff * (i + 1)
+        t += t_diff
         if not explicit_eq:
             state_update = stepper(wrapped_equation, current_state_vars_stack, equation_fin_diff_funcs, t_diff)
         else:
@@ -138,8 +185,9 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
         if check_finite and not np.all(np.isfinite(state_update)):
             #If an infinity happened, return the last non-infinite step we have 
-            output_time_list.append(i * t_diff)
-            output_state_list.append(current_state_vars_stack[:, 0])
+            last_valid_time = t - t_diff
+            last_valid_state = current_state_vars_stack[:, 0]
+            update_output(last_valid_time, last_valid_state, output_time_list, output_state_list)
             success = False 
             break
 
@@ -151,8 +199,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
 
         #For correct 'fencepost' logic, we should use this...
         if (i + 1) % output_increment == 0:
-            output_state_list.append(state_update)
-            output_time_list.append(t)
+            update_output(t, state_update, output_time_list, output_state_list)
             if print_progress:
                 print("Completed: {0:.1f} %".format(100 * i / t_steps))
 
@@ -162,8 +209,7 @@ def solve_equations(wrapped_equation, initial_state, x_diff, t_diff, t_steps, me
     #If guarantee_last, ensure that the last state is included in the returns, and avoid duplicates 
     if guarantee_last and success and t_steps % output_increment != 0:
         #Use the fact that t and state_var are at their final values
-        output_state_list.append(state_update) 
-        output_time_list.append(t)
+        update_output(t, state_update, output_time_list, output_state_list)
 
     output_state_array = np.array(output_state_list)
     output_time_array = np.array(output_time_list)
